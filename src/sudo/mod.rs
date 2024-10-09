@@ -31,7 +31,7 @@ pub(crate) fn candidate_sudoers_file() -> &'static Path {
         pb_rs
     } else {
         dev_info!("Running with /etc/sudoers file");
-        Path::new("/etc/sudoers")
+        Path::new("/usr/local/etc/sudoers")
     }
 }
 
