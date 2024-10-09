@@ -1,12 +1,8 @@
-FROM rust:1-slim-trixie
+FROM debian:trixie-slim
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends apparmor libpam0g-dev libapparmor1 procps sshpass rsyslog ca-certificates tzdata socat
-# cache the crates.io index in the image for faster local testing
-RUN cargo search sudo
+    apt-get install -y --no-install-recommends apparmor procps sshpass rsyslog socat
 WORKDIR /usr/src/sudo
-COPY . .
-ARG SUDO_BUILD_FEATURES
-RUN --mount=type=cache,target=/usr/src/sudo/target cargo build --locked --features="$SUDO_BUILD_FEATURES" --bins && mkdir -p build && cp target/debug/sudo build/sudo && cp target/debug/su build/su && cp target/debug/visudo build/visudo
+COPY target/build build
 # set setuid on install
 RUN install -m 4755 build/sudo /usr/bin/sudo && \
     install -m 4755 build/su /usr/bin/su && \
