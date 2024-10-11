@@ -4,6 +4,7 @@ use std::{
     ops::{Add, Sub},
 };
 
+/// A timestamp relative to `CLOCK_BOOTTIME` on Linux and relative to `CLOCK_REALTIME` on FreeBSD.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SystemTime {
     secs: i64,
@@ -22,7 +23,16 @@ impl SystemTime {
         let mut spec = MaybeUninit::<libc::timespec>::uninit();
         // SAFETY: valid pointer is passed to clock_gettime
         crate::cutils::cerr(unsafe {
-            libc::clock_gettime(libc::CLOCK_BOOTTIME, spec.as_mut_ptr())
+            libc::clock_gettime(
+                if cfg!(target_os = "linux") {
+                    libc::CLOCK_BOOTTIME
+                } else if cfg!(target_os = "freebsd") {
+                    libc::CLOCK_REALTIME
+                } else {
+                    unimplemented!()
+                },
+                spec.as_mut_ptr(),
+            )
         })?;
         // SAFETY: The `libc::clock_gettime` will correctly initialize `spec`,
         // otherwise it will return early with the `?` operator.

@@ -614,6 +614,7 @@ impl Process {
     }
 
     /// Get the process starting time of a specific process
+    #[cfg(target_os = "linux")]
     pub fn starting_time(pid: WithProcess) -> io::Result<SystemTime> {
         let process_start: u64 = read_proc_stat(pid, 21 /* start_time */)?;
 
@@ -631,6 +632,60 @@ impl Process {
             (process_start / ticks_per_second) as i64,
             ((process_start % ticks_per_second) * (1_000_000_000 / ticks_per_second)) as i64,
         ))
+    }
+
+    /// Get the process starting time of a specific process
+    #[cfg(target_os = "freebsd")]
+    pub fn starting_time(pid: WithProcess) -> io::Result<SystemTime> {
+        use std::ffi::c_void;
+        use std::ptr;
+
+        let mut ki_proc: Vec<libc::kinfo_proc> = Vec::with_capacity(1);
+
+        let pid = match pid {
+            WithProcess::Current => std::process::id() as i32,
+            WithProcess::Other(pid) => pid,
+        };
+
+        loop {
+            let mut size = ki_proc.capacity() * size_of::<libc::kinfo_proc>();
+            match cerr(unsafe {
+                libc::sysctl(
+                    [
+                        libc::CTL_KERN,
+                        libc::KERN_PROC,
+                        libc::KERN_PROC_PID,
+                        pid,
+                        size_of::<libc::kinfo_proc>() as i32,
+                        1,
+                    ]
+                    .as_ptr(),
+                    4,
+                    ki_proc.as_mut_ptr().cast::<c_void>(),
+                    &mut size,
+                    ptr::null(),
+                    0,
+                )
+            }) {
+                Ok(_) => {
+                    assert!(size >= size_of::<libc::kinfo_proc>());
+                    // SAFETY: The above sysctl has initialized at least `size` bytes. We have
+                    // asserted that this is at least a single element.
+                    unsafe {
+                        ki_proc.set_len(1);
+                    }
+                    break;
+                }
+                Err(e) if e.raw_os_error() == Some(libc::ENOMEM) => {
+                    // Vector not big enough. Grow it by 10% and try again.
+                    ki_proc.reserve(ki_proc.capacity() + (ki_proc.capacity() + 9) / 10);
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        let ki_start = ki_proc[0].ki_start;
+        Ok(SystemTime::new(ki_start.tv_sec, ki_start.tv_usec * 1000))
     }
 }
 
