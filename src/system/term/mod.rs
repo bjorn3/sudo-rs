@@ -261,6 +261,8 @@ mod tests {
             // Open a new pseudoterminal.
             let leader = Pty::open().unwrap().leader;
             // The pty leader should not have a foreground process group yet.
+            // On FreeBSD tcgetpgrp will return an invalid process ID when there is no foreground process group
+            #[cfg(not(target_os = "freebsd"))]
             assert_eq!(leader.tcgetpgrp().unwrap(), 0);
             // Create a new session so we can change the controlling terminal.
             setsid().unwrap();
