@@ -598,6 +598,7 @@ impl Process {
 
     /// Returns the device identifier of the TTY device that is currently
     /// attached to the given process
+    #[cfg(target_os = "linux")]
     pub fn tty_device_id(pid: WithProcess) -> std::io::Result<Option<DeviceId>> {
         // device id of tty is displayed as a signed integer of 32 bits
         let data: i32 = read_proc_stat(pid, 6 /* tty_nr */)?;
@@ -610,6 +611,64 @@ impl Process {
             // would use sign extension, which would result in a different bit
             // representation
             Ok(Some(data as u32 as DeviceId))
+        }
+    }
+
+    /// Returns the device identifier of the TTY device that is currently
+    /// attached to the given process
+    #[cfg(target_os = "freebsd")]
+    pub fn tty_device_id(pid: WithProcess) -> std::io::Result<Option<DeviceId>> {
+        use std::ffi::c_void;
+        use std::ptr;
+
+        let mut ki_proc: Vec<libc::kinfo_proc> = Vec::with_capacity(1);
+
+        let pid = match pid {
+            WithProcess::Current => std::process::id() as i32,
+            WithProcess::Other(pid) => pid,
+        };
+
+        loop {
+            let mut size = ki_proc.capacity() * size_of::<libc::kinfo_proc>();
+            match cerr(unsafe {
+                libc::sysctl(
+                    [
+                        libc::CTL_KERN,
+                        libc::KERN_PROC,
+                        libc::KERN_PROC_PID,
+                        pid,
+                        size_of::<libc::kinfo_proc>() as i32,
+                        1,
+                    ]
+                    .as_ptr(),
+                    4,
+                    ki_proc.as_mut_ptr().cast::<c_void>(),
+                    &mut size,
+                    ptr::null(),
+                    0,
+                )
+            }) {
+                Ok(_) => {
+                    assert!(size >= size_of::<libc::kinfo_proc>());
+                    // SAFETY: The above sysctl has initialized at least `size` bytes. We have
+                    // asserted that this is at least a single element.
+                    unsafe {
+                        ki_proc.set_len(1);
+                    }
+                    break;
+                }
+                Err(e) if e.raw_os_error() == Some(libc::ENOMEM) => {
+                    // Vector not big enough. Grow it by 10% and try again.
+                    ki_proc.reserve(ki_proc.capacity() + (ki_proc.capacity() + 9) / 10);
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        if ki_proc[0].ki_tdev == !0 {
+            Ok(None)
+        } else {
+            Ok(Some(ki_proc[0].ki_tdev))
         }
     }
 
