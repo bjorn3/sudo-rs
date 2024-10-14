@@ -1,0 +1,15 @@
+task:
+  name: freebsd
+  freebsd_instance:
+    image_family: freebsd-14-1
+    memory: 3GB
+  setup_rust_script:
+    - pkg install -y git-tiny
+    - curl https://sh.rustup.rs -sSf --output rustup.sh
+    - sh rustup.sh -y --profile=minimal
+  prepare_script:
+    - . $HOME/.cargo/env
+    - cargo build
+  test_script:
+    - . $HOME/.cargo/env
+    - cargo test
