@@ -1,5 +1,7 @@
 use core::fmt;
 // TODO: remove unused attribute when system is cleaned up
+#[cfg(target_os = "linux")]
+use std::str::FromStr;
 use std::{
     collections::BTreeSet,
     ffi::{c_uint, CStr, CString},
@@ -11,7 +13,6 @@ use std::{
         unix::{self, prelude::OsStrExt},
     },
     path::{Path, PathBuf},
-    str::FromStr,
 };
 
 use crate::{
@@ -540,6 +541,7 @@ pub enum WithProcess {
 }
 
 impl WithProcess {
+    #[cfg(target_os = "linux")]
     fn to_proc_string(&self) -> String {
         match self {
             WithProcess::Current => "self".into(),
@@ -748,6 +750,7 @@ impl Process {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn read_proc_stat<T: FromStr>(pid: WithProcess, field_idx: isize) -> io::Result<T> {
     // read from a specific pid file, or use `self` to refer to our own process
     let pidref = pid.to_proc_string();
