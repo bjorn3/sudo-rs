@@ -15,7 +15,7 @@ pub use self::command::{As, Child, Command, Output};
 
 mod command;
 
-const DOCKER_RUN_COMMAND: &[&str] = &["sleep", "infinity"];
+const DOCKER_RUN_COMMAND: &[&str] = &["sleep", "1000d"];
 
 pub struct Container {
     id: String,
@@ -28,8 +28,8 @@ impl Container {
     }
 
     pub fn new_with_hostname(image: &str, hostname: Option<&str>) -> Result<Self> {
-        let mut docker_run = StdCommand::new("docker");
-        docker_run.args(["run", "--detach"]);
+        let mut docker_run = StdCommand::new("sudo");
+        docker_run.args(["podman", "run", "--detach"]);
         if let Some(hostname) = hostname {
             docker_run.args(["--hostname", hostname]);
         }
@@ -60,8 +60,8 @@ impl Container {
     }
 
     fn docker_exec(&self, cmd: &Command) -> process::Command {
-        let mut docker_exec = StdCommand::new("docker");
-        docker_exec.arg("exec");
+        let mut docker_exec = StdCommand::new("sudo");
+        docker_exec.args(["podman", "exec"]);
         if cmd.get_stdin().is_some() {
             docker_exec.arg("-i");
         }
@@ -85,7 +85,7 @@ impl Container {
         let dest_path = format!("{}:{path_in_container}", self.id);
 
         run(
-            StdCommand::new("docker").args(["cp", &src_path, &dest_path]),
+            StdCommand::new("sudo").args(["podman", "cp", &src_path, &dest_path]),
             None,
         )?
         .assert_success()?;
@@ -106,7 +106,7 @@ impl Container {
         let src_path = format!("{}:/tmp/profraw", self.id);
         let dst_path = profraw_dir.join(&self.id).display().to_string();
         run(
-            StdCommand::new("docker").args(["cp", &src_path, &dst_path]),
+            StdCommand::new("sudo").args(["podman", "cp", &src_path, &dst_path]),
             None,
         )?
         .assert_success()?;
@@ -123,8 +123,8 @@ impl Drop for Container {
 
         // running this to completion would block the current thread for several seconds so just
         // fire and forget
-        let _ = StdCommand::new("docker")
-            .args(["rm", "-f", &self.id])
+        let _ = StdCommand::new("sudo")
+            .args(["podman", "rm", "-f", &self.id])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
@@ -133,16 +133,9 @@ impl Drop for Container {
 
 pub fn build_base_image() -> Result<()> {
     let repo_root = repo_root();
-    let mut cmd = StdCommand::new("docker");
+    let mut cmd = StdCommand::new("sudo");
 
-    cmd.args(["buildx", "build", "-t", base_image(), "--load"]);
-
-    if env::var_os("CI").is_some() {
-        cmd.args([
-            "--cache-from=type=local,src=/tmp/.buildx-cache",
-            "--cache-to=type=local,dest=/tmp/.buildx-cache-new,mode=max",
-        ]);
-    }
+    cmd.args(["podman", "build", "-t", base_image()]);
 
     match SudoUnderTest::from_env()? {
         SudoUnderTest::Ours => {
@@ -181,12 +174,12 @@ pub fn build_base_image() -> Result<()> {
         }
     }
 
-    if env::var_os("SUDO_TEST_VERBOSE_DOCKER_BUILD").is_none() {
-        cmd.stderr(Stdio::null()).stdout(Stdio::null());
-    }
+    //if env::var_os("SUDO_TEST_VERBOSE_DOCKER_BUILD").is_none() {
+    //    cmd.stderr(Stdio::null()).stdout(Stdio::null());
+    //}
 
     if !cmd.status()?.success() {
-        return Err("`docker build` failed".into());
+        return Err("`podman build` failed".into());
     }
 
     Ok(())
@@ -226,7 +219,7 @@ mod tests {
 
     use super::*;
 
-    const IMAGE: &str = "ubuntu:22.04";
+    const IMAGE: &str = "dougrabson/freebsd14-small:latest";
 
     #[test]
     fn eventually_removes_container_on_drop() -> Result<()> {
@@ -276,7 +269,7 @@ mod tests {
         let docker = Container::new(IMAGE)?;
 
         docker
-            .output(Command::new("useradd").arg(username))?
+            .output(Command::new("pw").args(["useradd", username]))?
             .assert_success()?;
 
         docker

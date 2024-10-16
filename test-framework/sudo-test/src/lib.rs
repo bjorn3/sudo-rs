@@ -362,20 +362,21 @@ impl User {
     }
 
     fn create(&self, container: &Container) -> Result<()> {
-        let mut useradd = Command::new("useradd");
-        useradd.arg("--no-user-group");
+        let mut useradd = Command::new("pw");
+        useradd.arg("useradd");
+        //useradd.arg("--no-user-group");
         if self.create_home_directory {
-            useradd.arg("--create-home");
+            useradd.arg("-m");
         }
         if let Some(path) = &self.shell {
-            useradd.arg("--shell").arg(path);
+            useradd.arg("-s").arg(path);
         }
         if let Some(id) = self.id {
-            useradd.arg("--uid").arg(id.to_string());
+            useradd.arg("-u").arg(id.to_string());
         }
         if !self.groups.is_empty() {
             let group_list = self.groups.iter().cloned().collect::<Vec<_>>().join(",");
-            useradd.arg("--groups").arg(group_list);
+            useradd.arg("-G").arg(group_list);
         }
         useradd.arg(&self.name);
         container.output(&useradd)?.assert_success()?;
@@ -478,7 +479,7 @@ pub fn TextFile(contents: impl AsRef<str>) -> TextFile {
 
 impl TextFile {
     const DEFAULT_CHMOD: &'static str = "000";
-    const DEFAULT_CHOWN: &'static str = "root:root";
+    const DEFAULT_CHOWN: &'static str = "root:wheel";
 
     /// chmod string to apply to the file
     ///
@@ -568,7 +569,7 @@ pub struct Directory {
 
 impl Directory {
     const DEFAULT_CHMOD: &'static str = "100";
-    const DEFAULT_CHOWN: &'static str = "root:root";
+    const DEFAULT_CHOWN: &'static str = "root:wheel";
 
     /// chmod string to apply to the file
     ///
