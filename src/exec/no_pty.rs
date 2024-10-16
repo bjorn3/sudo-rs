@@ -6,6 +6,7 @@ use super::{
     io_util::was_interrupted,
     terminate_process, ExitReason, HandleSigchld, ProcessOutput,
 };
+use crate::system::_exit;
 use crate::{
     common::bin_serde::BinPipe,
     system::signal::{
@@ -74,7 +75,7 @@ pub(super) fn exec_no_pty(sudo_pid: ProcessId, mut command: Command) -> io::Resu
             errpipe_tx.write(&error_code).ok();
         }
 
-        return Ok(ProcessOutput::ChildExit);
+        _exit(1);
     };
 
     dev_info!("executed command with pid {command_pid}");

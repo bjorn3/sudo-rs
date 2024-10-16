@@ -1,6 +1,7 @@
 use std::{ffi::c_int, io, os::unix::process::CommandExt, process::Command};
 
 use crate::exec::{opt_fmt, signal_fmt};
+use crate::system::_exit;
 use crate::system::signal::{
     consts::*, register_handlers, SignalHandler, SignalHandlerBehavior, SignalNumber, SignalSet,
     SignalStream,
@@ -103,7 +104,7 @@ pub(super) fn exec_monitor(
             errpipe_tx.write(&error_code).ok();
         }
 
-        return Ok(ProcessOutput::ChildExit);
+        _exit(1);
     };
 
     // Send the command's PID to the parent.
@@ -187,7 +188,7 @@ pub(super) fn exec_monitor(
 
     // FIXME (ogsudo): The tty is restored here if selinux is available.
 
-    Ok(ProcessOutput::ChildExit)
+    _exit(1);
 }
 
 // FIXME: This should return `io::Result<!>` but `!` is not stable yet.

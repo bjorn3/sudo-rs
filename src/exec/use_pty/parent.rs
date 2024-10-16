@@ -22,7 +22,7 @@ use crate::system::signal::{
 };
 use crate::system::term::{Pty, PtyFollower, PtyLeader, TermSize, Terminal, UserTerm};
 use crate::system::wait::WaitOptions;
-use crate::system::{chown, fork, getpgrp, kill, killpg, FileCloser, ForkResult, Group, User};
+use crate::system::{chown, fork, getpgrp, kill, killpg, FileCloser, ForkResult, Group, User, _exit};
 use crate::system::{getpgid, interface::ProcessId};
 
 use super::pipe::Pipe;
@@ -199,7 +199,7 @@ pub(in crate::exec) fn exec_pty(
             }
         }
 
-        return Ok(ProcessOutput::ChildExit);
+        _exit(1);
     };
 
     // Close the file descriptors that we don't access
