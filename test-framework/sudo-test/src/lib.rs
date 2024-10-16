@@ -58,7 +58,7 @@ type AbsolutePath = String;
 type Groupname = String;
 type Username = String;
 
-/// test environment        
+/// test environment
 pub struct Env {
     container: Container,
     users: HashSet<Username>,
@@ -68,7 +68,7 @@ pub struct Env {
 #[allow(non_snake_case)]
 pub fn Env(sudoers: impl Into<TextFile>) -> EnvBuilder {
     let mut builder = EnvBuilder::default();
-    builder.file("/etc/sudoers", sudoers);
+    builder.file("/usr/local/etc/sudoers", sudoers);
     builder
 }
 
@@ -274,10 +274,21 @@ impl EnvBuilder {
             file.create(path, &container)?;
         }
 
-        Ok(Env {
+        let env = Env {
             container,
             users: usernames,
-        })
+        };
+
+        assert!(Command::new("chmod")
+            .arg("4775")
+            .arg("/usr/bin/sudo")
+            .arg("/usr/bin/su")
+            .output(&env)
+            .unwrap()
+            .status()
+            .success());
+
+        Ok(env)
     }
 }
 
@@ -770,7 +781,7 @@ mod tests {
         let env = Env(expected).build()?;
 
         let actual = Command::new("cat")
-            .arg("/etc/sudoers")
+            .arg("/usr/local/etc/sudoers")
             .output(&env)?
             .stdout()?;
         assert_eq!(expected, actual);
