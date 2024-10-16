@@ -34,7 +34,7 @@ fn creates_sudoers_file_with_default_ownership_and_perms_if_it_doesnt_exist() ->
         .output(&env)?
         .stdout()?;
 
-    assert!(ls_output.starts_with("-rw-r----- 1 root root"));
+    assert!(ls_output.starts_with("-rw-r-----  1 root wheel"));
 
     Ok(())
 }
@@ -208,7 +208,7 @@ fn regular_user_can_create_file() -> Result<()> {
         .output(&env)?
         .stdout()?;
 
-    assert!(ls_output.starts_with(&format!("-rw-r----- 1 {USERNAME} users")));
+    assert!(ls_output.starts_with(&format!("-rw-r-----   1 {USERNAME} nobody")));
 
     Ok(())
 }

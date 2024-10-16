@@ -30,7 +30,7 @@ macro_rules! assert_snapshot {
 }
 
 const TMP_SUDOERS: &str = "/tmp/sudoers";
-const ETC_SUDOERS: &str = "/etc/sudoers";
+const ETC_SUDOERS: &str = "/usr/local/etc/sudoers";
 const DEFAULT_EDITOR: &str = "/usr/bin/editor";
 const LOGS_PATH: &str = "/tmp/logs.txt";
 const CHMOD_EXEC: &str = "100";
@@ -79,7 +79,7 @@ fn creates_sudoers_file_with_default_ownership_and_perms_if_it_doesnt_exist() ->
         .output(&env)?
         .stdout()?;
 
-    assert!(ls_output.starts_with("-r--r----- 1 root root"));
+    assert!(ls_output.starts_with("-r--r-----  1 root wheel"));
 
     Ok(())
 }
@@ -102,7 +102,7 @@ sleep 3",
     // wait until `child` has been spawned
     thread::sleep(Duration::from_secs(1));
 
-    let output = Command::new("visudo").output(&env)?;
+let output = Command::new("visudo").output(&env)?;
 
     child.wait()?.assert_success()?;
 
@@ -110,7 +110,7 @@ sleep 3",
     assert_eq!(Some(1), output.status().code());
     assert_contains!(
         output.stderr(),
-        "visudo: /etc/sudoers busy, try again later"
+        "visudo: /usr/local/etc/sudoers busy, try again later"
     );
 
     Ok(())
@@ -134,7 +134,7 @@ echo "$@" > {LOGS_PATH}"#
     let args = Command::new("cat").arg(LOGS_PATH).output(&env)?.stdout()?;
 
     if sudo_test::is_original_sudo() {
-        assert_eq!("-- /etc/sudoers.tmp", args);
+        assert_eq!("-- /usr/local/etc/sudoers.tmp", args);
     } else {
         assert_snapshot!(args);
     }
@@ -147,7 +147,7 @@ fn temporary_file_owner_and_perms() -> Result<()> {
     let editor_script = if sudo_test::is_original_sudo() {
         format!(
             r#"#!/bin/sh
-ls -l /etc/sudoers.tmp > {LOGS_PATH}"#
+ls -l /usr/local/etc/sudoers.tmp > {LOGS_PATH}"#
         )
     } else {
         format!(
@@ -164,7 +164,7 @@ ls -l /tmp/sudoers-*/sudoers > {LOGS_PATH}"#
 
     let ls_output = Command::new("cat").arg(LOGS_PATH).output(&env)?.stdout()?;
 
-    assert!(ls_output.starts_with("-rwx------ 1 root root"));
+    assert!(ls_output.starts_with("-rwx------  1 root wheel"));
 
     Ok(())
 }
@@ -212,7 +212,7 @@ fn stderr_message_when_file_is_not_modified() -> Result<()> {
     assert!(output.status().success());
     let stderr = output.stderr();
     if sudo_test::is_original_sudo() {
-        assert_eq!(output.stderr(), "visudo: /etc/sudoers.tmp unchanged");
+        assert_eq!(output.stderr(), "visudo: /usr/local/etc/sudoers.tmp unchanged");
     } else {
         assert_snapshot!(stderr);
     }
@@ -306,7 +306,7 @@ rm $2",
     if sudo_test::is_original_sudo() {
         assert_contains!(
             stderr,
-            "visudo: unable to re-open temporary file (/etc/sudoers.tmp), /etc/sudoers unchanged"
+            "visudo: unable to re-open temporary file (/usr/local/etc/sudoers.tmp), /usr/local/etc/sudoers unchanged"
         );
     } else {
         assert_snapshot!(stderr);
@@ -358,6 +358,7 @@ fn temporary_file_is_deleted_when_done() -> Result<()> {
 }
 
 #[test]
+//#[ignore = "hangs on freebsd"]
 fn temporary_file_is_deleted_when_terminated_by_signal() -> Result<()> {
     let kill_visudo = "/root/kill-visudo.sh";
     let expected = SUDOERS_ALL_ALL_NOPASSWD;

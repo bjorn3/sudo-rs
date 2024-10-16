@@ -5,7 +5,7 @@ use crate::{Result, SUDOERS_ALL_ALL_NOPASSWD, USERNAME};
 #[test]
 fn relative_path() -> Result<()> {
     let env = Env("@include sudoers2")
-        .file("/etc/sudoers2", SUDOERS_ALL_ALL_NOPASSWD)
+        .file("/usr/local/etc/sudoers2", SUDOERS_ALL_ALL_NOPASSWD)
         .build()?;
 
     Command::new("sudo")
@@ -28,16 +28,16 @@ fn absolute_path() -> Result<()> {
 
 #[test]
 fn file_does_not_exist() -> Result<()> {
-    let env = Env("@include /etc/sudoers2").build()?;
+    let env = Env("@include /usr/local/etc/sudoers2").build()?;
 
     let output = Command::new("sudo").arg("true").output(&env)?;
 
     assert!(!output.status().success());
     assert_eq!(Some(1), output.status().code());
     let diagnostic = if sudo_test::is_original_sudo() {
-        "sudo: unable to open /etc/sudoers2: No such file or directory"
+        "sudo: unable to open /usr/local/etc/sudoers2: No such file or directory"
     } else {
-        "sudo-rs: cannot open sudoers file '/etc/sudoers2'"
+        "sudo-rs: cannot open sudoers file '/usr/local/etc/sudoers2'"
     };
     assert_contains!(output.stderr(), diagnostic);
     Ok(())
@@ -69,8 +69,8 @@ fn whitespace_in_name_double_quotes() -> Result<()> {
 
 #[test]
 fn old_pound_syntax() -> Result<()> {
-    let env = Env("#include /etc/sudoers2")
-        .file("/etc/sudoers2", SUDOERS_ALL_ALL_NOPASSWD)
+    let env = Env("#include /usr/local/etc/sudoers2")
+        .file("/usr/local/etc/sudoers2", SUDOERS_ALL_ALL_NOPASSWD)
         .build()?;
 
     Command::new("sudo")
@@ -117,8 +117,8 @@ fn double_quote_in_name_double_quotes() -> Result<()> {
 
 #[test]
 fn include_loop_error_messages() -> Result<()> {
-    let env = Env("@include /etc/sudoers2")
-        .file(r#"/etc/sudoers2"#, "@include /etc/sudoers")
+    let env = Env("@include /usr/local/etc/sudoers2")
+        .file(r#"/usr/local/etc/sudoers2"#, "@include /usr/local/etc/sudoers")
         .build()?;
 
     let output = Command::new("sudo").arg("true").output(&env)?;
@@ -126,9 +126,9 @@ fn include_loop_error_messages() -> Result<()> {
     assert!(!output.status().success());
     assert_eq!(Some(1), output.status().code());
     let diagnostic = if sudo_test::is_original_sudo() {
-        "sudo: /etc/sudoers2: too many levels of includes"
+        "sudo: /usr/local/etc/sudoers2: too many levels of includes"
     } else {
-        "sudo-rs: include file limit reached opening '/etc/sudoers2'"
+        "sudo-rs: include file limit reached opening '/usr/local/etc/sudoers2'"
     };
     assert_contains!(output.stderr(), diagnostic);
 
@@ -137,17 +137,17 @@ fn include_loop_error_messages() -> Result<()> {
 
 #[test]
 fn include_loop_not_fatal() -> Result<()> {
-    let env = Env([SUDOERS_ALL_ALL_NOPASSWD, "@include /etc/sudoers2"])
-        .file(r#"/etc/sudoers2"#, "@include /etc/sudoers")
+    let env = Env([SUDOERS_ALL_ALL_NOPASSWD, "@include /usr/local/etc/sudoers2"])
+        .file(r#"/usr/local/etc/sudoers2"#, "@include /usr/local/etc/sudoers")
         .build()?;
 
     let output = Command::new("sudo").arg("true").output(&env)?;
 
     assert!(output.status().success());
     let diagnostic = if sudo_test::is_original_sudo() {
-        "sudo: /etc/sudoers2: too many levels of includes"
+        "sudo: /usr/local/etc/sudoers2: too many levels of includes"
     } else {
-        "sudo-rs: include file limit reached opening '/etc/sudoers2'"
+        "sudo-rs: include file limit reached opening '/usr/local/etc/sudoers2'"
     };
     assert_contains!(output.stderr(), diagnostic);
 
@@ -156,9 +156,9 @@ fn include_loop_not_fatal() -> Result<()> {
 
 #[test]
 fn permissions_check() -> Result<()> {
-    let env = Env("@include /etc/sudoers2")
+    let env = Env("@include /usr/local/etc/sudoers2")
         .file(
-            r#"/etc/sudoers2"#,
+            r#"/usr/local/etc/sudoers2"#,
             TextFile(SUDOERS_ALL_ALL_NOPASSWD).chmod("777"),
         )
         .build()?;
@@ -168,9 +168,9 @@ fn permissions_check() -> Result<()> {
     assert!(!output.status().success());
     assert_eq!(Some(1), output.status().code());
     let diagnostic = if sudo_test::is_original_sudo() {
-        "sudo: /etc/sudoers2 is world writable"
+        "sudo: /usr/local/etc/sudoers2 is world writable"
     } else {
-        "sudo-rs: /etc/sudoers2 cannot be world-writable"
+        "sudo-rs: /usr/local/etc/sudoers2 cannot be world-writable"
     };
     assert_contains!(output.stderr(), diagnostic);
 
@@ -180,16 +180,16 @@ fn permissions_check() -> Result<()> {
 #[test]
 fn permissions_check_not_fatal() -> Result<()> {
     let env = Env([SUDOERS_ALL_ALL_NOPASSWD, "@include sudoers2"])
-        .file(r#"/etc/sudoers2"#, TextFile("").chmod("777"))
+        .file(r#"/usr/local/etc/sudoers2"#, TextFile("").chmod("777"))
         .build()?;
 
     let output = Command::new("sudo").arg("true").output(&env)?;
 
     assert!(output.status().success());
     let diagnostic = if sudo_test::is_original_sudo() {
-        "sudo: /etc/sudoers2 is world writable"
+        "sudo: /usr/local/etc/sudoers2 is world writable"
     } else {
-        "sudo-rs: /etc/sudoers2 cannot be world-writable"
+        "sudo-rs: /usr/local/etc/sudoers2 cannot be world-writable"
     };
     assert_contains!(output.stderr(), diagnostic);
 
@@ -198,9 +198,9 @@ fn permissions_check_not_fatal() -> Result<()> {
 
 #[test]
 fn ownership_check() -> Result<()> {
-    let env = Env("@include /etc/sudoers2")
+    let env = Env("@include /usr/local/etc/sudoers2")
         .file(
-            r#"/etc/sudoers2"#,
+            r#"/usr/local/etc/sudoers2"#,
             TextFile(SUDOERS_ALL_ALL_NOPASSWD).chown(USERNAME),
         )
         .user(USERNAME)
@@ -211,9 +211,9 @@ fn ownership_check() -> Result<()> {
     assert!(!output.status().success());
     assert_eq!(Some(1), output.status().code());
     let diagnostic = if sudo_test::is_original_sudo() {
-        "sudo: /etc/sudoers2 is owned by uid 1000, should be 0"
+        "sudo: /usr/local/etc/sudoers2 is owned by uid 1000, should be 0"
     } else {
-        "sudo-rs: /etc/sudoers2 must be owned by root"
+        "sudo-rs: /usr/local/etc/sudoers2 must be owned by root"
     };
     assert_contains!(output.stderr(), diagnostic);
 
@@ -222,8 +222,8 @@ fn ownership_check() -> Result<()> {
 
 #[test]
 fn ownership_check_not_fatal() -> Result<()> {
-    let env = Env([SUDOERS_ALL_ALL_NOPASSWD, "@include /etc/sudoers2"])
-        .file(r#"/etc/sudoers2"#, TextFile("").chown(USERNAME))
+    let env = Env([SUDOERS_ALL_ALL_NOPASSWD, "@include /usr/local/etc/sudoers2"])
+        .file(r#"/usr/local/etc/sudoers2"#, TextFile("").chown(USERNAME))
         .user(USERNAME)
         .build()?;
 
@@ -231,9 +231,9 @@ fn ownership_check_not_fatal() -> Result<()> {
 
     assert!(output.status().success());
     let diagnostic = if sudo_test::is_original_sudo() {
-        "sudo: /etc/sudoers2 is owned by uid 1000, should be 0"
+        "sudo: /usr/local/etc/sudoers2 is owned by uid 1000, should be 0"
     } else {
-        "sudo-rs: /etc/sudoers2 must be owned by root"
+        "sudo-rs: /usr/local/etc/sudoers2 must be owned by root"
     };
     assert_contains!(output.stderr(), diagnostic);
 
@@ -244,8 +244,8 @@ fn ownership_check_not_fatal() -> Result<()> {
 #[ignore = "gh676"]
 fn hostname_expansion() -> Result<()> {
     let hostname = "ship";
-    let env = Env("@include /etc/sudoers.%h")
-        .file(format!("/etc/sudoers.{hostname}"), SUDOERS_ALL_ALL_NOPASSWD)
+    let env = Env("@include /usr/local/etc/sudoers.%h")
+        .file(format!("/usr/local/etc/sudoers.{hostname}"), SUDOERS_ALL_ALL_NOPASSWD)
         .hostname(hostname)
         .build()?;
 
@@ -269,7 +269,7 @@ fn relative_path_parent_directory() -> Result<()> {
 
 #[test]
 fn relative_path_grandparent_directory() -> Result<()> {
-    // base path is `/etc/sudoers` so grandparent does not exist
+    // base path is `/usr/local/etc/sudoers` so grandparent does not exist
     let env = Env("@include ../../sudoers2").build()?;
 
     let output = Command::new("sudo").arg("true").output(&env)?;
@@ -277,9 +277,9 @@ fn relative_path_grandparent_directory() -> Result<()> {
     assert!(!output.status().success());
     assert_eq!(Some(1), output.status().code());
     let diagnostic = if sudo_test::is_original_sudo() {
-        "sudo: unable to open /etc/../../sudoers2: No such file or directory"
+        "sudo: unable to open /usr/local/etc/../../sudoers2: No such file or directory"
     } else {
-        "sudo-rs: cannot open sudoers file '/etc/../../sudoers2'"
+        "sudo-rs: cannot open sudoers file '/usr/local/etc/../../sudoers2'"
     };
     assert_contains!(output.stderr(), diagnostic);
     Ok(())
@@ -288,7 +288,7 @@ fn relative_path_grandparent_directory() -> Result<()> {
 #[test]
 fn relative_path_dot_slash() -> Result<()> {
     let env = Env("@include ./sudoers2")
-        .file("/etc/sudoers2", SUDOERS_ALL_ALL_NOPASSWD)
+        .file("/usr/local/etc/sudoers2", SUDOERS_ALL_ALL_NOPASSWD)
         .build()?;
 
     Command::new("sudo")

@@ -95,9 +95,9 @@ fn cannot_sudo_if_sudoers_file_is_world_writable() -> Result<()> {
     assert_eq!(Some(1), output.status().code());
 
     let diagnostic = if sudo_test::is_original_sudo() {
-        "/etc/sudoers is world writable"
+        "/usr/local/etc/sudoers is world writable"
     } else {
-        "invalid configuration: /etc/sudoers cannot be world-writable"
+        "invalid configuration: /usr/local/etc/sudoers cannot be world-writable"
     };
     assert_contains!(output.stderr(), diagnostic);
 
@@ -116,9 +116,9 @@ fn cannot_sudo_if_sudoers_file_is_group_writable() -> Result<()> {
     assert_eq!(Some(1), output.status().code());
 
     let diagnostic = if sudo_test::is_original_sudo() {
-        "/etc/sudoers is owned by gid 1234, should be 0"
+        "/usr/local/etc/sudoers is owned by gid 1234, should be 0"
     } else {
-        "invalid configuration: /etc/sudoers cannot be group-writable"
+        "invalid configuration: /usr/local/etc/sudoers cannot be group-writable"
     };
     assert_contains!(output.stderr(), diagnostic);
 
@@ -145,9 +145,9 @@ fn cannot_sudo_if_sudoers_file_is_not_owned_by_root() -> Result<()> {
     assert_eq!(Some(1), output.status().code());
 
     let diagnostic = if sudo_test::is_original_sudo() {
-        "/etc/sudoers is owned by uid 1234, should be 0"
+        "/usr/local/etc/sudoers is owned by uid 1234, should be 0"
     } else {
-        "invalid configuration: /etc/sudoers must be owned by root"
+        "invalid configuration: /usr/local/etc/sudoers must be owned by root"
     };
     assert_contains!(output.stderr(), diagnostic);
 

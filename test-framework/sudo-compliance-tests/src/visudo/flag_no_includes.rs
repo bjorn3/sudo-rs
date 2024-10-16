@@ -9,7 +9,7 @@ use crate::{
 fn does_not_edit_at_include_files_that_dont_contain_syntax_errors() -> Result<()> {
     let env = Env("# 1
 @include sudoers2")
-    .file("/etc/sudoers2", "# 2")
+    .file("/usr/local/etc/sudoers2", "# 2")
     .file(
         DEFAULT_EDITOR,
         TextFile(format!(
@@ -41,7 +41,7 @@ fn does_edit_at_include_files_that_contain_syntax_errors() -> Result<()> {
     let env = Env("# 1
 @include sudoers2")
     .file(
-        "/etc/sudoers2",
+        "/usr/local/etc/sudoers2",
         "# 2
 this is fine",
     )
@@ -76,12 +76,12 @@ fn does_not_edit_deep_at_include_files_that_contain_syntax_errors() -> Result<()
     let env = Env("# 1
 @include sudoers2")
     .file(
-        "/etc/sudoers2",
+        "/usr/local/etc/sudoers2",
         "# 2
 @include sudoers3",
     )
     .file(
-        "/etc/sudoers3",
+        "/usr/local/etc/sudoers3",
         "# 3
 this is fine",
     )

@@ -6,8 +6,8 @@ use crate::{
 
 #[test]
 fn absolute_path() -> Result<()> {
-    let env = Env("@includedir /etc/sudoers.d")
-        .file("/etc/sudoers.d/a", SUDOERS_ALL_ALL_NOPASSWD)
+    let env = Env("@includedir /usr/local/etc/sudoers.d")
+        .file("/usr/local/etc/sudoers.d/a", SUDOERS_ALL_ALL_NOPASSWD)
         .build()?;
 
     Command::new("sudo")
@@ -19,7 +19,7 @@ fn absolute_path() -> Result<()> {
 #[test]
 fn relative_path() -> Result<()> {
     let env = Env("@includedir sudoers.d")
-        .file("/etc/sudoers.d/a", SUDOERS_ALL_ALL_NOPASSWD)
+        .file("/usr/local/etc/sudoers.d/a", SUDOERS_ALL_ALL_NOPASSWD)
         .build()?;
 
     Command::new("sudo")
@@ -30,8 +30,8 @@ fn relative_path() -> Result<()> {
 
 #[test]
 fn ignores_files_with_names_ending_in_tilde() -> Result<()> {
-    let env = Env("@includedir /etc/sudoers.d")
-        .file("/etc/sudoers.d/a~", SUDOERS_ALL_ALL_NOPASSWD)
+    let env = Env("@includedir /usr/local/etc/sudoers.d")
+        .file("/usr/local/etc/sudoers.d/a~", SUDOERS_ALL_ALL_NOPASSWD)
         .build()?;
 
     let output = Command::new("sudo").arg("true").output(&env)?;
@@ -50,10 +50,10 @@ fn ignores_files_with_names_ending_in_tilde() -> Result<()> {
 
 #[test]
 fn ignores_files_with_names_that_contain_a_dot() -> Result<()> {
-    let env = Env("@includedir /etc/sudoers.d")
-        .file("/etc/sudoers.d/a.", SUDOERS_ALL_ALL_NOPASSWD)
-        .file("/etc/sudoers.d/.b", SUDOERS_ALL_ALL_NOPASSWD)
-        .file("/etc/sudoers.d/c.d", SUDOERS_ALL_ALL_NOPASSWD)
+    let env = Env("@includedir /usr/local/etc/sudoers.d")
+        .file("/usr/local/etc/sudoers.d/a.", SUDOERS_ALL_ALL_NOPASSWD)
+        .file("/usr/local/etc/sudoers.d/.b", SUDOERS_ALL_ALL_NOPASSWD)
+        .file("/usr/local/etc/sudoers.d/c.d", SUDOERS_ALL_ALL_NOPASSWD)
         .build()?;
 
     let output = Command::new("sudo").arg("true").output(&env)?;
@@ -92,9 +92,9 @@ fn directory_does_not_exist_is_not_fatal() -> Result<()> {
 
 #[test]
 fn loads_files_in_lexical_order() -> Result<()> {
-    let env = Env("@includedir /etc/sudoers.d")
-        .file("/etc/sudoers.d/a", "ALL ALL=(ALL:ALL) ALL")
-        .file("/etc/sudoers.d/b", "ALL ALL=(ALL:ALL) NOPASSWD: ALL")
+    let env = Env("@includedir /usr/local/etc/sudoers.d")
+        .file("/usr/local/etc/sudoers.d/a", "ALL ALL=(ALL:ALL) ALL")
+        .file("/usr/local/etc/sudoers.d/b", "ALL ALL=(ALL:ALL) NOPASSWD: ALL")
         .user(USERNAME)
         .build()?;
 
@@ -107,9 +107,9 @@ fn loads_files_in_lexical_order() -> Result<()> {
 
 #[test]
 fn ignores_and_warns_about_file_with_bad_perms() -> Result<()> {
-    let env = Env([SUDOERS_USER_ALL_NOPASSWD, "@includedir /etc/sudoers.d"])
+    let env = Env([SUDOERS_USER_ALL_NOPASSWD, "@includedir /usr/local/etc/sudoers.d"])
         .file(
-            "/etc/sudoers.d/a",
+            "/usr/local/etc/sudoers.d/a",
             // if this was NOT ignored, then the `sudo true` below would fail because no password
             // was provided
             TextFile(SUDOERS_USER_ALL_ALL).chmod("777"),
@@ -124,9 +124,9 @@ fn ignores_and_warns_about_file_with_bad_perms() -> Result<()> {
 
     assert!(output.status().success());
     let diagnostic = if sudo_test::is_original_sudo() {
-        "/etc/sudoers.d/a is world writable"
+        "/usr/local/etc/sudoers.d/a is world writable"
     } else {
-        "/etc/sudoers.d/a cannot be world-writable"
+        "/usr/local/etc/sudoers.d/a cannot be world-writable"
     };
     assert_contains!(output.stderr(), diagnostic);
 
@@ -135,9 +135,9 @@ fn ignores_and_warns_about_file_with_bad_perms() -> Result<()> {
 
 #[test]
 fn ignores_and_warns_about_file_with_bad_ownership() -> Result<()> {
-    let env = Env([SUDOERS_USER_ALL_NOPASSWD, "@includedir /etc/sudoers.d"])
+    let env = Env([SUDOERS_USER_ALL_NOPASSWD, "@includedir /usr/local/etc/sudoers.d"])
         .file(
-            "/etc/sudoers.d/a",
+            "/usr/local/etc/sudoers.d/a",
             // if this was NOT ignored, then the `sudo true` below would fail because no password
             // was provided
             TextFile(SUDOERS_USER_ALL_ALL).chown(USERNAME),
@@ -152,9 +152,9 @@ fn ignores_and_warns_about_file_with_bad_ownership() -> Result<()> {
 
     assert!(output.status().success());
     let diagnostic = if sudo_test::is_original_sudo() {
-        "/etc/sudoers.d/a is owned by uid 1000, should be 0"
+        "/usr/local/etc/sudoers.d/a is owned by uid 1000, should be 0"
     } else {
-        "/etc/sudoers.d/a must be owned by root"
+        "/usr/local/etc/sudoers.d/a must be owned by root"
     };
     assert_contains!(output.stderr(), diagnostic);
 
@@ -163,8 +163,8 @@ fn ignores_and_warns_about_file_with_bad_ownership() -> Result<()> {
 
 #[test]
 fn include_loop() -> Result<()> {
-    let env = Env([SUDOERS_USER_ALL_NOPASSWD, "@includedir /etc/sudoers.d"])
-        .file("/etc/sudoers.d/a", TextFile("@include /etc/sudoers.d/a"))
+    let env = Env([SUDOERS_USER_ALL_NOPASSWD, "@includedir /usr/local/etc/sudoers.d"])
+        .file("/usr/local/etc/sudoers.d/a", TextFile("@include /usr/local/etc/sudoers.d/a"))
         .user(USERNAME)
         .build()?;
 
@@ -175,7 +175,7 @@ fn include_loop() -> Result<()> {
 
     assert!(output.status().success());
     let diagnostic = if sudo_test::is_original_sudo() {
-        "/etc/sudoers.d/a: too many levels of includes"
+        "/usr/local/etc/sudoers.d/a: too many levels of includes"
     } else {
         "sudo-rs: include file limit reached opening '/etc/sudoers.d/a'"
     };
@@ -186,14 +186,14 @@ fn include_loop() -> Result<()> {
 
 #[test]
 fn statements_prior_to_include_loop_are_evaluated() -> Result<()> {
-    let env = Env([SUDOERS_USER_ALL_ALL, "@includedir /etc/sudoers.d"])
+    let env = Env([SUDOERS_USER_ALL_ALL, "@includedir /usr/local/etc/sudoers.d"])
         .file(
-            "/etc/sudoers.d/a",
+            "/usr/local/etc/sudoers.d/a",
             TextFile(format!(
                 // if this first line was ignored the `sudo true` below would fail because a
                 // password was not provided
                 "{SUDOERS_USER_ALL_NOPASSWD}
-@include /etc/sudoers.d/a"
+@include /usr/local/etc/sudoers.d/a"
             )),
         )
         .user(USERNAME)
@@ -207,7 +207,7 @@ fn statements_prior_to_include_loop_are_evaluated() -> Result<()> {
     assert!(output.status().success());
 
     let diagnostic = if sudo_test::is_original_sudo() {
-        "/etc/sudoers.d/a: too many levels of includes"
+        "/usr/local/etc/sudoers.d/a: too many levels of includes"
     } else {
         "sudo-rs: include file limit reached opening '/etc/sudoers.d/a'"
     };
@@ -271,8 +271,8 @@ fn backslash_in_name_double_quotes() -> Result<()> {
 
 #[test]
 fn old_pound_syntax() -> Result<()> {
-    let env = Env("#includedir /etc/sudoers.d")
-        .file("/etc/sudoers.d/a", SUDOERS_ALL_ALL_NOPASSWD)
+    let env = Env("#includedir /usr/local/etc/sudoers.d")
+        .file("/usr/local/etc/sudoers.d/a", SUDOERS_ALL_ALL_NOPASSWD)
         .build()?;
 
     Command::new("sudo")
@@ -284,10 +284,10 @@ fn old_pound_syntax() -> Result<()> {
 #[test]
 fn no_hostname_expansion() -> Result<()> {
     let hostname = "ship";
-    let env = Env("@includedir /etc/sudoers.%h")
-        .directory(format!("/etc/sudoers.{hostname}"))
+    let env = Env("@includedir /usr/local/etc/sudoers.%h")
+        .directory(format!("/usr/local/etc/sudoers.{hostname}"))
         .file(
-            format!("/etc/sudoers.{hostname}/a"),
+            format!("/usr/local/etc/sudoers.{hostname}/a"),
             SUDOERS_ALL_ALL_NOPASSWD,
         )
         .build()?;
@@ -308,9 +308,9 @@ fn no_hostname_expansion() -> Result<()> {
 
 #[test]
 fn ignores_directory_with_bad_perms() -> Result<()> {
-    let env = Env("@includedir /etc/sudoers2.d")
-        .directory(Directory("/etc/sudoers2.d").chmod("777"))
-        .file("/etc/sudoers2.d/a", SUDOERS_ALL_ALL_NOPASSWD)
+    let env = Env("@includedir /usr/local/etc/sudoers2.d")
+        .directory(Directory("/usr/local/etc/sudoers2.d").chmod("777"))
+        .file("/usr/local/etc/sudoers2.d/a", SUDOERS_ALL_ALL_NOPASSWD)
         .build()?;
 
     let output = Command::new("sudo").arg("true").output(&env)?;
@@ -319,12 +319,12 @@ fn ignores_directory_with_bad_perms() -> Result<()> {
     assert_eq!(Some(1), output.status().code());
     let diagnostics = if sudo_test::is_original_sudo() {
         [
-            "sudo: /etc/sudoers2.d is world writable",
+            "sudo: /usr/local/etc/sudoers2.d is world writable",
             "root is not in the sudoers file",
         ]
     } else {
         [
-            "sudo-rs: /etc/sudoers2.d cannot be world-writable",
+            "sudo-rs: /usr/local/etc/sudoers2.d cannot be world-writable",
             "authentication failed",
         ]
     };
@@ -337,9 +337,9 @@ fn ignores_directory_with_bad_perms() -> Result<()> {
 
 #[test]
 fn ignores_directory_with_bad_ownership() -> Result<()> {
-    let env = Env("@includedir /etc/sudoers2.d")
-        .directory(Directory("/etc/sudoers2.d").chown(USERNAME))
-        .file("/etc/sudoers2.d/a", SUDOERS_ALL_ALL_NOPASSWD)
+    let env = Env("@includedir /usr/local/etc/sudoers2.d")
+        .directory(Directory("/usr/local/etc/sudoers2.d").chown(USERNAME))
+        .file("/usr/local/etc/sudoers2.d/a", SUDOERS_ALL_ALL_NOPASSWD)
         .user(USERNAME)
         .build()?;
 
@@ -349,12 +349,12 @@ fn ignores_directory_with_bad_ownership() -> Result<()> {
     assert_eq!(Some(1), output.status().code());
     let diagnostics = if sudo_test::is_original_sudo() {
         [
-            "sudo: /etc/sudoers2.d is owned by uid 1000, should be 0",
+            "sudo: /usr/local/etc/sudoers2.d is owned by uid 1000, should be 0",
             "root is not in the sudoers file",
         ]
     } else {
         [
-            "sudo-rs: /etc/sudoers2.d must be owned by root",
+            "sudo-rs: /usr/local/etc/sudoers2.d must be owned by root",
             "authentication failed",
         ]
     };
@@ -397,7 +397,7 @@ fn relative_path_grandparent_directory() -> Result<()> {
 fn relative_path_dot_slash() -> Result<()> {
     // base path is `/etc/` so grandparent does not exist
     let env = Env("@includedir ./sudoers.d")
-        .file("/etc/sudoers.d/a", SUDOERS_ALL_ALL_NOPASSWD)
+        .file("/usr/local/etc/sudoers.d/a", SUDOERS_ALL_ALL_NOPASSWD)
         .build()?;
 
     Command::new("sudo")

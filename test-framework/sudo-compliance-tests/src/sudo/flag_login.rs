@@ -188,7 +188,7 @@ echo $@";
 #[test]
 fn shell_is_invoked_as_a_login_shell() -> Result<()> {
     let env = Env(SUDOERS_ALL_ALL_NOPASSWD)
-        .user(User(USERNAME).shell("/bin/bash"))
+        .user(User(USERNAME).shell("/usr/bin/bash"))
         .build()?;
 
     let expected = "-bash";

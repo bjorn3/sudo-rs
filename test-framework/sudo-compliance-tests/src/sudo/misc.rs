@@ -168,7 +168,7 @@ fn works_when_invoked_through_a_symlink() -> Result<()> {
         .output(&env)?
         .stdout()?;
 
-    // lrwxrwxrwx 1 ferris users
+    // lrwxrwxrwx 1 ferris nobody
     eprintln!("{ls_output}");
 
     // symlink has not the setuid bit set

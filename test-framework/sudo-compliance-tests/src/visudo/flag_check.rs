@@ -14,7 +14,7 @@ fn no_syntax_errors_and_ok_ownership_and_perms() -> Result<()> {
 
     assert!(output.status().success(), "{}", output.stderr());
     assert!(output.stderr().is_empty());
-    assert_eq!("/etc/sudoers: parsed OK", output.stdout()?);
+    assert_eq!("/usr/local/etc/sudoers: parsed OK", output.stdout()?);
 
     Ok(())
 }
@@ -29,7 +29,7 @@ fn bad_perms() -> Result<()> {
     assert_eq!(Some(1), output.status().code());
     assert_contains!(
         output.stderr(),
-        "/etc/sudoers: bad permissions, should be mode 0440"
+        "/usr/local/etc/sudoers: bad permissions, should be mode 0440"
     );
 
     Ok(())
@@ -47,7 +47,7 @@ fn bad_ownership() -> Result<()> {
     assert_eq!(Some(1), output.status().code());
     assert_contains!(
         output.stderr(),
-        "/etc/sudoers: wrong owner (uid, gid) should be (0, 0)"
+        "/usr/local/etc/sudoers: wrong owner (uid, gid) should be (0, 0)"
     );
 
     Ok(())
@@ -81,7 +81,7 @@ fn file_does_not_exist() -> Result<()> {
     assert_eq!(Some(1), output.status().code());
     assert_contains!(
         output.stderr(),
-        "visudo: unable to open /etc/sudoers: No such file or directory"
+        "visudo: unable to open /usr/local/etc/sudoers: No such file or directory"
     );
 
     Ok(())
@@ -185,7 +185,7 @@ fn flag_file_does_not_check_perms_nor_ownership() -> Result<()> {
     let env = Env("")
         .file(
             file_path,
-            TextFile("").chown(format!("{USERNAME}:users")).chmod("777"),
+            TextFile("").chown(format!("{USERNAME}:nobody")).chmod("777"),
         )
         .user(USERNAME)
         .build()?;
