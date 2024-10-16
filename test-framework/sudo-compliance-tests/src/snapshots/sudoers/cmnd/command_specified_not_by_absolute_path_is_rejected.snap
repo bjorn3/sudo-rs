@@ -2,7 +2,7 @@
 source: sudo-compliance-tests/src/sudoers/cmnd.rs
 expression: stderr
 ---
-/etc/sudoers:1:19: expected a fully-qualified path name
+/usr/local/etc/sudoers:1:19: expected a fully-qualified path name
 ALL ALL=(ALL:ALL) true
                   ^~~~
 root is not in the sudoers file.

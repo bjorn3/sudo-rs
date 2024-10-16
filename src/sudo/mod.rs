@@ -48,13 +48,13 @@ you are unsure how to do this then this software is not suited for you at this t
 
 const VERSION: &str = std::env!("CARGO_PKG_VERSION");
 
-fn candidate_sudoers_file() -> &'static Path {
+pub(crate) fn candidate_sudoers_file() -> &'static Path {
     let pb_rs: &'static Path = Path::new("/etc/sudoers-rs");
     if pb_rs.exists() {
         dev_info!("Running with /etc/sudoers-rs file");
         pb_rs
     } else {
-        dev_info!("Running with /etc/sudoers file");
+        dev_info!("Running with /usr/local/etc/sudoers file");
         Path::new("/usr/local/etc/sudoers")
     }
 }

@@ -10,6 +10,7 @@ use std::{
     process::Command,
 };
 
+use crate::sudo::candidate_sudoers_file;
 use crate::{
     sudo::diagnostic,
     sudoers::Sudoers,
@@ -64,7 +65,7 @@ pub fn main() {
 }
 
 fn check(file_arg: Option<&str>, perms: bool, owner: bool) -> io::Result<()> {
-    let sudoers_path = Path::new(file_arg.unwrap_or("/etc/sudoers"));
+    let sudoers_path = file_arg.map(Path::new).unwrap_or(candidate_sudoers_file());
 
     let sudoers_file = File::open(sudoers_path)
         .map_err(|err| io_msg!(err, "unable to open {}", sudoers_path.display()))?;
@@ -121,7 +122,7 @@ fn check(file_arg: Option<&str>, perms: bool, owner: bool) -> io::Result<()> {
 }
 
 fn run(file_arg: Option<&str>, perms: bool, owner: bool) -> io::Result<()> {
-    let sudoers_path = Path::new(file_arg.unwrap_or("/etc/sudoers"));
+    let sudoers_path = file_arg.map(Path::new).unwrap_or(candidate_sudoers_file());
 
     let (sudoers_file, existed) = if sudoers_path.exists() {
         let file = File::options().read(true).write(true).open(sudoers_path)?;
@@ -299,9 +300,23 @@ fn edit_sudoers_file(
 }
 
 fn editor_path_fallback() -> io::Result<PathBuf> {
-    let path = Path::new("/usr/bin/editor");
-    if can_execute(path) {
-        return Ok(path.to_owned());
+    let editors = if cfg!(target_os = "linux") {
+        &["/usr/bin/editor"][..]
+    } else if cfg!(target_os = "freebsd") {
+        &[
+            "/usr/bin/editor", // FIXME remove this from the list. included as compliance tests depend on it
+            "/usr/local/bin/vim",
+            "/usr/local/bin/vi",
+            "/bin/vi",
+        ]
+    } else {
+        unimplemented!("unknown default editor for target")
+    };
+    for &editor in editors {
+        let path = Path::new(editor);
+        if can_execute(path) {
+            return Ok(path.to_owned());
+        }
     }
 
     Err(io::Error::new(
