@@ -375,6 +375,7 @@ impl User {
     fn create(&self, container: &Container) -> Result<()> {
         let mut useradd = Command::new("pw");
         useradd.arg("useradd");
+        useradd.arg(&self.name);
         //useradd.arg("--no-user-group");
         if self.create_home_directory {
             useradd.arg("-m");
@@ -389,12 +390,15 @@ impl User {
             let group_list = self.groups.iter().cloned().collect::<Vec<_>>().join(",");
             useradd.arg("-G").arg(group_list);
         }
-        useradd.arg(&self.name);
         container.output(&useradd)?.assert_success()?;
 
         if let Some(password) = &self.password {
             container
-                .output(Command::new("chpasswd").stdin(format!("{}:{password}", self.name)))?
+                .output(
+                    Command::new("pw")
+                        .args(["usermod", "-n", &self.name, "-h", "0"])
+                        .stdin(password),
+                )?
                 .assert_success()?;
         }
 
@@ -446,12 +450,13 @@ impl Group {
     }
 
     fn create(&self, container: &Container) -> Result<()> {
-        let mut groupadd = Command::new("groupadd");
+        let mut groupadd = Command::new("pw");
+        groupadd.arg("groupadd");
+        groupadd.arg(&self.name);
         if let Some(id) = self.id {
-            groupadd.arg("--gid");
+            groupadd.arg("-g");
             groupadd.arg(id.to_string());
         }
-        groupadd.arg(&self.name);
         container.output(&groupadd)?.assert_success()
     }
 }
