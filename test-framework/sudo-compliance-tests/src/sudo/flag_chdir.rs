@@ -11,9 +11,9 @@ fn cwd_not_set_cannot_change_dir() -> Result<()> {
     assert_eq!(Some(1), output.status().code());
     assert!(!output.status().success());
     let diagnostic = if sudo_test::is_original_sudo() {
-        "you are not permitted to use the -D option with /usr/bin/pwd"
+        "you are not permitted to use the -D option with /bin/pwd"
     } else {
-        "you are not allowed to use '--chdir /root' with '/usr/bin/pwd'"
+        "you are not allowed to use '--chdir /root' with '/bin/pwd'"
     };
     assert_contains!(output.stderr(), diagnostic);
 
@@ -97,9 +97,9 @@ fn cwd_set_to_non_glob_value_then_cannot_use_chdir_flag() -> Result<()> {
     assert_eq!(Some(1), output.status().code());
 
     let diagnostic = if sudo_test::is_original_sudo() {
-        "you are not permitted to use the -D option with /usr/bin/pwd"
+        "you are not permitted to use the -D option with /bin/pwd"
     } else {
-        "you are not allowed to use '--chdir /tmp' with '/usr/bin/pwd'"
+        "you are not allowed to use '--chdir /tmp' with '/bin/pwd'"
     };
     assert_contains!(output.stderr(), diagnostic);
 
@@ -119,9 +119,9 @@ fn cwd_set_to_non_glob_value_then_cannot_use_that_path_with_chdir_flag() -> Resu
     assert_eq!(Some(1), output.status().code());
 
     let diagnostic = if sudo_test::is_original_sudo() {
-        "you are not permitted to use the -D option with /usr/bin/pwd".to_owned()
+        "you are not permitted to use the -D option with /bin/pwd".to_owned()
     } else {
-        format!("you are not allowed to use '--chdir {path}' with '/usr/bin/pwd'")
+        format!("you are not allowed to use '--chdir {path}' with '/bin/pwd'")
     };
     assert_contains!(output.stderr(), diagnostic);
 

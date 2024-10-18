@@ -16,7 +16,7 @@ fn fixture() -> Result<Processes> {
     let env = Env([SUDOERS_ALL_ALL_NOPASSWD, "Defaults use_pty"]).build()?;
 
     let child = Command::new("sudo")
-        .args(["sh", "-c", "touch /tmp/barrier; sleep 3"])
+        .args(["sh", "-c", "touch /tmp/barrier; sleep 3; sleep 1"])
         .tty(true)
         .spawn(&env)?;
 
@@ -39,6 +39,7 @@ fn fixture() -> Result<Processes> {
 
     sudo_related_processes.sort_by_key(|entry| entry.pid);
 
+    println!("{:?}", sudo_related_processes);
     let [original, monitor, command]: [PsAuxEntry; 3] = sudo_related_processes
         .try_into()
         .map_err(|_| "expected 3 sudo-related processes")?;
@@ -119,11 +120,11 @@ fn pty_owner() -> Result<()> {
     let env = Env([SUDOERS_ALL_ALL_NOPASSWD, "Defaults use_pty"]).build()?;
 
     let stdout = Command::new("sudo")
-        .args(["sh", "-c", "stat $(tty) --format '%U %G'"])
+        .args(["sh", "-c", "stat -f '%u %g' $(tty)"])
         .tty(true)
         .output(&env)?
         .stdout()?;
-    assert_eq!(stdout.trim(), "root tty");
+    assert_eq!(stdout.trim(), "0 4");
 
     Ok(())
 }
