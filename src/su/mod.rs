@@ -24,9 +24,9 @@ fn authenticate(
     user: &str,
     login: bool,
 ) -> Result<PamContext<CLIConverser>, Error> {
-    let context = if login { "su-l" } else { "su" };
+    let context = if login && cfg!(target_os = "linux") { "su-l" } else { "su" };
     let use_stdin = true;
-    let mut pam = PamContext::builder_cli("su", use_stdin, Default::default())
+    let mut pam = PamContext::builder_cli("su", use_stdin, false)
         .target_user(user)
         .service_name(context)
         .build()?;
