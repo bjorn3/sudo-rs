@@ -3,6 +3,7 @@ use sudo_test::{Command, Env, User};
 use crate::{Result, PASSWORD, USERNAME};
 
 #[test]
+#[cfg_attr(target_os = "freebsd", ignore = "FreeBSD doesn't support /etc/security")]
 fn etc_security_limits_rules_apply_according_to_the_target_user() -> Result<()> {
     let target_user = "ghost";
     let original = "2048";
@@ -14,7 +15,7 @@ fn etc_security_limits_rules_apply_according_to_the_target_user() -> Result<()> 
     let env = Env("")
         .file("/etc/security/limits.d/50-test.conf", limits)
         .user(USERNAME)
-        .user(User(target_user).password(PASSWORD).shell("/usr/bin/bash"))
+        .user(User(target_user).password(PASSWORD).shell("/usr/local/bin/bash"))
         .build()?;
 
     // this appears to ignore the `limits` rules, perhaps because of docker

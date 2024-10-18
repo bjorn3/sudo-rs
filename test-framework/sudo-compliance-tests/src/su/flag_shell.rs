@@ -89,7 +89,7 @@ fn ignores_shell_env_var_when_flag_preserve_environment_is_absent() -> Result<()
         .output(&env)?
         .stdout()?;
 
-    assert_eq!("/usr/bin/bash", stdout);
+    assert_eq!("/bin/sh", stdout);
 
     Ok(())
 }
@@ -182,7 +182,7 @@ echo {message}"
             format!(
                 "# {restricted_shell_path}
 /usr/bin/sh
-/usr/bin/bash"
+/usr/local/bin/bash"
             ),
         )
         .user(invoking_user)
@@ -214,11 +214,8 @@ echo {message}"
 fn when_no_etc_shells_file_uses_a_default_list() -> Result<()> {
     let default_list = ["/bin/sh"];
     let not_in_list = [
-        "/bin/bash",
-        "/usr/bin/bash",
-        "/usr/bin/sh",
-        "/bin/dash",
-        "/usr/bin/dash",
+        "/usr/local/bin/bash",
+        "/usr/local/bin/dash",
     ];
     let invoking_user = USERNAME;
     let target_user = "ghost";
@@ -282,18 +279,13 @@ fn shell_canonical_path_is_not_used_when_determining_if_shell_is_restricted_or_n
     let shell = "/tmp/bash-symlink";
 
     let env = Env("")
-        .file("/etc/shells", "/usr/bin/bash")
+        .file("/etc/shells", "/usr/local/bin/bash")
         .user(invoking_user)
         .user(User(target_user).shell(shell).password(PASSWORD))
         .build()?;
 
     Command::new("ln")
-        .args(["-s", "/usr/bin/bash", shell])
-        .output(&env)?
-        .assert_success()?;
-
-    Command::new("rm")
-        .arg("/etc/shells")
+        .args(["-s", "/usr/local/bin/bash", shell])
         .output(&env)?
         .assert_success()?;
 
