@@ -258,7 +258,7 @@ fn hostname_expansion() -> Result<()> {
 #[test]
 fn relative_path_parent_directory() -> Result<()> {
     let env = Env("@include ../sudoers2")
-        .file("/sudoers2", SUDOERS_ALL_ALL_NOPASSWD)
+        .file("/usr/local/sudoers2", SUDOERS_ALL_ALL_NOPASSWD)
         .build()?;
 
     Command::new("sudo")

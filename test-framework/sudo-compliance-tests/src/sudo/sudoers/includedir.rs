@@ -177,7 +177,7 @@ fn include_loop() -> Result<()> {
     let diagnostic = if sudo_test::is_original_sudo() {
         "/usr/local/etc/sudoers.d/a: too many levels of includes"
     } else {
-        "sudo-rs: include file limit reached opening '/etc/sudoers.d/a'"
+        "sudo-rs: include file limit reached opening '/usr/local/etc/sudoers.d/a'"
     };
     assert_contains!(output.stderr(), diagnostic);
 
@@ -209,7 +209,7 @@ fn statements_prior_to_include_loop_are_evaluated() -> Result<()> {
     let diagnostic = if sudo_test::is_original_sudo() {
         "/usr/local/etc/sudoers.d/a: too many levels of includes"
     } else {
-        "sudo-rs: include file limit reached opening '/etc/sudoers.d/a'"
+        "sudo-rs: include file limit reached opening '/usr/local/etc/sudoers.d/a'"
     };
 
     assert_contains!(output.stderr(), diagnostic);
@@ -369,8 +369,8 @@ fn ignores_directory_with_bad_ownership() -> Result<()> {
 #[test]
 fn relative_path_parent_directory() -> Result<()> {
     let env = Env("@includedir ../sudoers.d")
-        .directory("/sudoers.d")
-        .file("/sudoers.d/a", SUDOERS_ALL_ALL_NOPASSWD)
+        .directory("/usr/local/sudoers.d")
+        .file("/usr/local/sudoers.d/a", SUDOERS_ALL_ALL_NOPASSWD)
         .build()?;
 
     Command::new("sudo")
@@ -382,7 +382,7 @@ fn relative_path_parent_directory() -> Result<()> {
 #[test]
 fn relative_path_grandparent_directory() -> Result<()> {
     // base path is `/etc/` so grandparent does not exist
-    let env = Env("@includedir ../../sudoers.d")
+    let env = Env("@includedir ../../../../sudoers.d")
         .directory("/sudoers.d")
         .file("/sudoers.d/a", SUDOERS_ALL_ALL_NOPASSWD)
         .build()?;

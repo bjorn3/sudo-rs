@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use sudo_test::{Command, Env, TextFile};
+use sudo_test::{Command, Env, TextFile, User};
 
 use crate::{Result, SUDOERS_ALL_ALL_NOPASSWD, USERNAME};
 
@@ -18,7 +18,7 @@ macro_rules! assert_snapshot {
 #[test]
 fn if_shell_env_var_is_not_set_then_uses_the_invoking_users_shell_in_passwd_database() -> Result<()>
 {
-    let env = Env(SUDOERS_ALL_ALL_NOPASSWD).user(USERNAME).build()?;
+    let env = Env(SUDOERS_ALL_ALL_NOPASSWD).user(User(USERNAME).shell("/usr/local/bin/bash")).build()?;
 
     let getent_passwd = Command::new("getent")
         .arg("passwd")
@@ -167,13 +167,13 @@ fn shell_is_not_invoked_as_a_login_shell() -> Result<()> {
     let env = Env(SUDOERS_ALL_ALL_NOPASSWD).build()?;
 
     let actual = Command::new("env")
-        .args(["SHELL=/usr/bin/bash", "sudo", "-s", "echo", "$0"])
+        .args(["SHELL=/usr/local/bin/bash", "sudo", "-s", "echo", "$0"])
         .output(&env)?
         .stdout()?;
 
     // man bash says "A login shell is one whose first character of argument zero is a -"
     assert_ne!("-bash", actual);
-    assert_eq!("/usr/bin/bash", actual);
+    assert_eq!("/usr/local/bin/bash", actual);
 
     Ok(())
 }
