@@ -8,6 +8,6 @@ User root may run the following commands on container:
 Sudoers entry:
     RunAsUsers: root
     Commands:
-	/usr/bin/ls
+	/bin/ls
 	/usr/bin/true
 	/usr/bin/false

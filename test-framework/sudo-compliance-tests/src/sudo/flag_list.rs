@@ -326,7 +326,7 @@ fn uppercase_u_flag_matches_on_first_component_of_sudoers_rules() -> Result<()> 
         "ALL ALL=({USERNAME}:ALL) /usr/bin/true
         {USERNAME} ALL=(ALL:ALL) /usr/bin/pwd
         {USERNAME} ALL=(root:ALL) /usr/bin/false
-        root ALL=(ALL:ALL) /usr/bin/ls
+        root ALL=(ALL:ALL) /bin/ls
         root ALL=({USERNAME}:ALL) /usr/bin/date
         ALL ALL=(root:ALL) /usr/bin/whoami
     "
@@ -382,7 +382,7 @@ fn lowercase_u_flag_matches_users_inside_parenthesis_in_sudoers_rules() -> Resul
 fn lowercase_u_flag_not_matching_on_first_component_of_sudoers_rules() -> Result<()> {
     let another_user = "another_user";
     let hostname = "container";
-    let env = Env(format!("{another_user} ALL=(ALL:ALL) /usr/bin/ls"))
+    let env = Env(format!("{another_user} ALL=(ALL:ALL) /bin/ls"))
         .user(another_user)
         .hostname(hostname)
         .build()?;

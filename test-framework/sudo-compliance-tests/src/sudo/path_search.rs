@@ -106,7 +106,7 @@ fn paths_are_matched_using_realpath_in_arguments() -> Result<()> {
     // dockerfile or explicitly create a symbolic link
 
     Command::new("sudo")
-        .arg("/bin/true")
+        .arg("/usr/bin/true")
         .output(&env)?
         .assert_success()?;
 

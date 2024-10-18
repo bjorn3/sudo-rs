@@ -14,4 +14,4 @@ Sudoers entry:
 Sudoers entry:
     RunAsUsers: root
     Commands:
-	/usr/bin/ls
+	/bin/ls

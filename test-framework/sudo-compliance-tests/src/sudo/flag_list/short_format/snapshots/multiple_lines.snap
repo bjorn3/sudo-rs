@@ -5,4 +5,4 @@ expression: stdout
 ---
 User root may run the following commands on container:
     (root) /usr/bin/true, /usr/bin/false
-    (root) /usr/bin/ls
+    (root) /bin/ls
