@@ -5,4 +5,4 @@ expression: stdout
 ---
 User root may run the following commands on container:
     (root) CWD=* /usr/bin/true
-    (ferris) CWD=* /usr/bin/false, CWD=/home /usr/bin/ls
+    (ferris) CWD=* /usr/bin/false, CWD=/home /bin/ls

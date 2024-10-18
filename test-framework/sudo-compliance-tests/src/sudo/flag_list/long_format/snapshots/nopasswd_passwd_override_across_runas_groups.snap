@@ -21,4 +21,4 @@ Sudoers entry:
     RunAsUsers: ferris
     Options: authenticate
     Commands:
-	/usr/bin/ls
+	/bin/ls

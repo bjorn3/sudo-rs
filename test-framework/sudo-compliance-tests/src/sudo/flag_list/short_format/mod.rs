@@ -123,7 +123,7 @@ fn complex_runas() -> Result<()> {
 fn command_alias() -> Result<()> {
     let stdout = sudo_list_of(
         "Cmnd_Alias COMMANDS = /usr/bin/true, /usr/bin/false
- ALL  ALL  = /usr/bin/ls, COMMANDS ",
+ ALL  ALL  = /bin/ls, COMMANDS ",
     )?;
     assert_snapshot!(stdout);
     Ok(())
@@ -133,7 +133,7 @@ fn command_alias() -> Result<()> {
 fn negated_command_alias() -> Result<()> {
     let stdout = sudo_list_of(
         "Cmnd_Alias COMMANDS = /usr/bin/true, !/usr/bin/false
- ALL  ALL  = /usr/bin/ls, !COMMANDS ",
+ ALL  ALL  = /bin/ls, !COMMANDS ",
     )?;
     assert_snapshot!(stdout);
     Ok(())
@@ -219,7 +219,7 @@ fn cwd_across_runas_groups() -> Result<()> {
 #[test]
 fn cwd_override_across_runas_groups() -> Result<()> {
     let stdout = sudo_list_of(
-        " ALL  ALL  = CWD = * /usr/bin/true , (ferris) /usr/bin/false , CWD = /home /usr/bin/ls ",
+        " ALL  ALL  = CWD = * /usr/bin/true , (ferris) /usr/bin/false , CWD = /home /bin/ls ",
     )?;
     assert_snapshot!(stdout);
     Ok(())
@@ -278,7 +278,7 @@ fn passwd_across_runas_groups() -> Result<()> {
 #[test]
 fn nopasswd_passwd_override_across_runas_groups() -> Result<()> {
     let stdout = sudo_list_of(
-        " ALL  ALL  = NOPASSWD : /usr/bin/true , ( ferris ) /usr/bin/false , PASSWD : /usr/bin/ls ",
+        " ALL  ALL  = NOPASSWD : /usr/bin/true , ( ferris ) /usr/bin/false , PASSWD : /bin/ls ",
     )?;
     assert_snapshot!(stdout);
     Ok(())
@@ -295,7 +295,7 @@ fn cwd_nopasswd() -> Result<()> {
 fn multiple_lines() -> Result<()> {
     let stdout = sudo_list_of(
         " ALL  ALL  = /usr/bin/true , /usr/bin/false
- root ALL = /usr/bin/ls ",
+ root ALL = /bin/ls ",
     )?;
     assert_snapshot!(stdout);
     Ok(())

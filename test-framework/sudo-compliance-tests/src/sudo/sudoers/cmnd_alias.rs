@@ -17,7 +17,7 @@ macro_rules! assert_snapshot {
 #[test]
 fn cmnd_alias_works() -> Result<()> {
     let env = Env([
-        "Cmnd_Alias CMDSGROUP = /usr/bin/true, /usr/bin/ls",
+        "Cmnd_Alias CMDSGROUP = /usr/bin/true, /bin/ls",
         "ALL ALL=(ALL:ALL) CMDSGROUP",
     ])
     .build()?;
@@ -31,7 +31,7 @@ fn cmnd_alias_works() -> Result<()> {
 #[test]
 fn cmnd_alias_nopasswd() -> Result<()> {
     let env = Env([
-        "Cmnd_Alias CMDSGROUP = /usr/bin/true, /usr/bin/ls",
+        "Cmnd_Alias CMDSGROUP = /usr/bin/true, /bin/ls",
         "ALL ALL=(ALL:ALL) NOPASSWD: CMDSGROUP",
     ])
     .user(USERNAME)
@@ -47,7 +47,7 @@ fn cmnd_alias_nopasswd() -> Result<()> {
 #[test]
 fn cmnd_alias_can_contain_underscore_and_digits() -> Result<()> {
     let env = Env([
-        "Cmnd_Alias UNDER_SCORE123 = /usr/bin/true, /usr/bin/ls",
+        "Cmnd_Alias UNDER_SCORE123 = /usr/bin/true, /bin/ls",
         "ALL ALL=(ALL:ALL) UNDER_SCORE123",
     ])
     .build()?;
@@ -75,11 +75,7 @@ fn cmnd_alias_cannot_start_with_underscore() -> Result<()> {
 
 #[test]
 fn unlisted_cmnd_fails() -> Result<()> {
-    let env = Env([
-        "Cmnd_Alias CMDS = /usr/bin/ls",
-        "ALL ALL=(ALL:ALL) CMDSGROUP",
-    ])
-    .build()?;
+    let env = Env(["Cmnd_Alias CMDS = /bin/ls", "ALL ALL=(ALL:ALL) CMDSGROUP"]).build()?;
 
     let output = Command::new("sudo").arg("true").output(&env)?;
 
@@ -101,7 +97,7 @@ fn unlisted_cmnd_fails() -> Result<()> {
 #[test]
 fn command_specified_not_by_absolute_path_is_rejected() -> Result<()> {
     let env = Env([
-        "Cmnd_Alias CMDSGROUP = true, /usr/bin/ls",
+        "Cmnd_Alias CMDSGROUP = true, /bin/ls",
         "ALL ALL=(ALL:ALL) CMDSGROUP",
     ])
     .build()?;
@@ -127,7 +123,7 @@ fn command_specified_not_by_absolute_path_is_rejected() -> Result<()> {
 #[test]
 fn command_alias_negation() -> Result<()> {
     let env = Env([
-        "Cmnd_Alias CMDSGROUP = /usr/bin/true, /usr/bin/ls",
+        "Cmnd_Alias CMDSGROUP = /usr/bin/true, /bin/ls",
         "ALL ALL=(ALL:ALL) !CMDSGROUP",
     ])
     .build()?;
@@ -153,7 +149,7 @@ fn command_alias_negation() -> Result<()> {
 fn combined_cmnd_aliases() -> Result<()> {
     let env = Env([
         "Cmnd_Alias TRUEGROUP = /usr/bin/sh, /usr/bin/true",
-        "Cmnd_Alias LSGROUP = /usr/bin/ls, /usr/sbin/dump",
+        "Cmnd_Alias LSGROUP = /bin/ls, /usr/sbin/dump",
         "Cmnd_Alias BAZ = !TRUEGROUP, LSGROUP",
         "ALL ALL=(ALL:ALL) BAZ",
     ])
@@ -182,7 +178,7 @@ fn combined_cmnd_aliases() -> Result<()> {
 #[test]
 fn double_negation() -> Result<()> {
     let env = Env([
-        "Cmnd_Alias CMDSGROUP = /usr/bin/true, /usr/bin/ls",
+        "Cmnd_Alias CMDSGROUP = /usr/bin/true, /bin/ls",
         "ALL ALL=(ALL:ALL) !!CMDSGROUP",
     ])
     .build()?;
@@ -197,7 +193,7 @@ fn double_negation() -> Result<()> {
 fn negation_not_order_sensitive() -> Result<()> {
     let env = Env([
         "Cmnd_Alias TRUECMND = /usr/bin/true",
-        "Cmnd_Alias LSCMND = /usr/bin/ls",
+        "Cmnd_Alias LSCMND = /bin/ls",
         "Cmnd_Alias BAZ = TRUECMND, !LSCMND",
         "ALL ALL=(ALL:ALL) BAZ",
     ])
@@ -228,7 +224,7 @@ fn negation_not_order_sensitive() -> Result<()> {
 fn negation_combination() -> Result<()> {
     let env = Env([
         "Cmnd_Alias TRUECMND = !/usr/bin/true",
-        "Cmnd_Alias LSCMND = /usr/bin/ls",
+        "Cmnd_Alias LSCMND = /bin/ls",
         "Cmnd_Alias BAZ = !TRUECMND, LSCMND",
         "ALL ALL=(ALL:ALL) BAZ",
     ])
@@ -249,7 +245,7 @@ fn negation_combination() -> Result<()> {
 fn another_negation_combination() -> Result<()> {
     let env = Env([
         "Cmnd_Alias TRUECMND = /usr/bin/true",
-        "Cmnd_Alias LSCMND = /usr/bin/ls",
+        "Cmnd_Alias LSCMND = /bin/ls",
         "Cmnd_Alias BAZ = TRUECMND, !LSCMND",
         "ALL ALL=(ALL:ALL) !BAZ",
     ])
@@ -280,7 +276,7 @@ fn another_negation_combination() -> Result<()> {
 fn one_more_negation_combination() -> Result<()> {
     let env = Env([
         "Cmnd_Alias TRUECMND = /usr/bin/true",
-        "Cmnd_Alias LSCMND = !/usr/bin/ls",
+        "Cmnd_Alias LSCMND = !/bin/ls",
         "Cmnd_Alias BAZ = TRUECMND, LSCMND",
         "ALL ALL=(ALL:ALL) !BAZ",
     ])
@@ -311,7 +307,7 @@ fn one_more_negation_combination() -> Result<()> {
 fn tripple_negation_combination() -> Result<()> {
     let env = Env([
         "Cmnd_Alias TRUECMND = /usr/bin/true",
-        "Cmnd_Alias LSCMND = !/usr/bin/ls",
+        "Cmnd_Alias LSCMND = !/bin/ls",
         "Cmnd_Alias BAZ = TRUECMND, !LSCMND",
         "ALL ALL=(ALL:ALL) !BAZ",
     ])
@@ -352,7 +348,7 @@ fn tripple_negation_combination() -> Result<()> {
 fn comma_listing_works() -> Result<()> {
     let env = Env([
         "Cmnd_Alias TRUEGROUP = /usr/bin/sh, /usr/bin/true",
-        "Cmnd_Alias LSGROUP = /usr/bin/ls, /usr/sbin/dump",
+        "Cmnd_Alias LSGROUP = /bin/ls, /usr/sbin/dump",
         "ALL ALL=(ALL:ALL) TRUEGROUP, LSGROUP",
     ])
     .build()?;
@@ -372,20 +368,19 @@ fn comma_listing_works() -> Result<()> {
 fn runas_override() -> Result<()> {
     let env = Env([
         "Cmnd_Alias TRUECMND = /usr/bin/true",
-        "Cmnd_Alias LSCMND = /usr/bin/ls",
+        "Cmnd_Alias LSCMND = /bin/ls",
         "ALL ALL = (root) LSCMND, (ferris) TRUECMND",
     ])
     .user("ferris")
     .build()?;
 
-    let stdout = Command::new("sudo")
-        .args(["/usr/bin/ls", "/root"])
-        .output(&env)?
-        .stdout()?;
-    assert_eq!("", stdout);
+    let output = Command::new("sudo")
+        .args(["/bin/ls", "/root"])
+        .output(&env)?;
+    assert!(output.status().success());
 
     let output = Command::new("sudo")
-        .args(["-u", "ferris", "/usr/bin/ls"])
+        .args(["-u", "ferris", "/bin/ls"])
         .output(&env)?;
 
     assert!(!output.status().success());
@@ -428,7 +423,7 @@ fn runas_override() -> Result<()> {
 fn runas_override_repeated_cmnd_means_runas_union() -> Result<()> {
     let env = Env([
         "Cmnd_Alias TRUECMND = /usr/bin/true",
-        "Cmnd_Alias LSCMND = /usr/bin/ls",
+        "Cmnd_Alias LSCMND = /bin/ls",
         "ALL ALL = (root) TRUECMND, (ferris) TRUECMND",
     ])
     .user("ferris")

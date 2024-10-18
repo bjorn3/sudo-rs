@@ -83,7 +83,7 @@ fn when_empty_then_as_own_group_is_allowed() -> Result<()> {
 
     for user in ["root", USERNAME] {
         Command::new("sudo")
-            .args(["-g", user, "true"])
+            .args(["-g", if user == "root" { "wheel" } else { user }, "true"])
             .as_user(user)
             .output(&env)?
             .assert_success()?;
@@ -386,14 +386,15 @@ fn when_no_run_as_spec_then_a_group_that_root_is_in_may_be_specified() -> Result
 
     //TODO: also test the case '-g wheel' (when root is made a group of 'wheel'); this requires a change in sudo-test
     let output = Command::new("sudo")
-        .args(["-u", "root", "-g", "root", "groups"])
+        .args(["-u", "root", "-g", "wheel", "groups"])
         .as_user(USERNAME)
         .output(&env)?
         .stdout()?;
 
     let mut actual = output.split_ascii_whitespace().collect::<HashSet<_>>();
 
-    assert!(actual.remove("root"));
+    assert!(actual.remove("wheel"));
+    assert!(actual.remove("operator"));
     assert!(actual.is_empty());
 
     Ok(())

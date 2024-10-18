@@ -17,7 +17,7 @@ macro_rules! assert_snapshot {
 #[test]
 fn explicit_passwd_overrides_nopasswd() -> Result<()> {
     let env = Env([
-        "ALL ALL=(ALL:ALL) NOPASSWD: /usr/bin/true, PASSWD: /usr/bin/ls",
+        "ALL ALL=(ALL:ALL) NOPASSWD: /usr/bin/true, PASSWD: /bin/ls",
         SUDOERS_NO_LECTURE,
     ])
     .user(USERNAME)

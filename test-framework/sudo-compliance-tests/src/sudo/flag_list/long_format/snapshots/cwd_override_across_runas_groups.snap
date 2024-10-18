@@ -21,4 +21,4 @@ Sudoers entry:
     RunAsUsers: ferris
     Cwd: /home
     Commands:
-	/usr/bin/ls
+	/bin/ls
