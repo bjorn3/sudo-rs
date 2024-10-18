@@ -324,7 +324,7 @@ fn uppercase_u_flag_matches_on_first_component_of_sudoers_rules() -> Result<()> 
     let hostname = "container";
     let env = Env(format!(
         "ALL ALL=({USERNAME}:ALL) /usr/bin/true
-        {USERNAME} ALL=(ALL:ALL) /usr/bin/pwd
+        {USERNAME} ALL=(ALL:ALL) /bin/pwd
         {USERNAME} ALL=(root:ALL) /usr/bin/false
         root ALL=(ALL:ALL) /bin/ls
         root ALL=({USERNAME}:ALL) /usr/bin/date
@@ -345,7 +345,7 @@ fn uppercase_u_flag_matches_on_first_component_of_sudoers_rules() -> Result<()> 
     let expected = format!(
         "User {USERNAME} may run the following commands on {hostname}:
     ({USERNAME} : ALL) /usr/bin/true
-    (ALL : ALL) /usr/bin/pwd
+    (ALL : ALL) /bin/pwd
     (root : ALL) /usr/bin/false
     (root : ALL) /usr/bin/whoami"
     );
@@ -361,7 +361,7 @@ fn lowercase_u_flag_matches_users_inside_parenthesis_in_sudoers_rules() -> Resul
     let hostname = "container";
     let env = Env(format!(
         "root ALL=({another_user}:ALL)   /usr/bin/false
-        root ALL=(ALL:ALL)     /usr/bin/pwd
+        root ALL=(ALL:ALL)     /bin/pwd
         ALL ALL=({another_user}:ALL)    /usr/bin/whoami"
     ))
     .user(another_user)

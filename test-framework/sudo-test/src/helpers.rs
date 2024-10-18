@@ -35,12 +35,10 @@ pub struct PsAuxEntry {
 impl PsAuxEntry {
     /// whether the process has an associated PTY
     pub fn has_tty(&self) -> bool {
-        if self.tty == "?" {
+        if self.tty == "?" || self.tty == "-" {
             false
-        } else if self.tty.starts_with("pts/") {
-            true
         } else {
-            unimplemented!()
+            true
         }
     }
 
