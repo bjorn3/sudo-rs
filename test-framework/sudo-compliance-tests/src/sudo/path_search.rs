@@ -125,7 +125,7 @@ fn arg0_native_is_passed_from_commandline() -> Result<()> {
         .output(&env)?;
 
     let stderr = output.stderr();
-    assert_starts_with!(stderr, "/bin/foo: unrecognized option");
+    assert_starts_with!(stderr, "foo: unrecognized option");
 
     Ok(())
 }
@@ -177,7 +177,7 @@ fn arg0_script_is_resolved_from_commandline() -> Result<()> {
         .output(&env)?;
 
     let stdout = output.stdout()?;
-    assert_eq!(stdout, "/usr/bin/foo");
+    assert_eq!(stdout, "/bin/foo");
 
     Ok(())
 }
