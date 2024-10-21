@@ -279,6 +279,12 @@ impl EnvBuilder {
             users: usernames,
         };
 
+        let _ = Command::new("chmod")
+            .arg("755")
+            .arg("/home")
+            .output(&env)
+            .unwrap();
+
         assert!(Command::new("chmod")
             .arg("4775")
             .arg("/usr/bin/sudo")
