@@ -208,7 +208,7 @@ fn regular_user_can_create_file() -> Result<()> {
         .output(&env)?
         .stdout()?;
 
-    assert!(ls_output.starts_with(&format!("-rw-r-----   1 {USERNAME} nobody")));
+    assert!(ls_output.starts_with(&format!("-rw-r-----  1 {USERNAME} wheel")));
 
     Ok(())
 }
