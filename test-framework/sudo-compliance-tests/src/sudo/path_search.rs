@@ -120,7 +120,7 @@ fn arg0_native_is_passed_from_commandline() -> Result<()> {
     let output = Command::new("sh")
         .args([
             "-c",
-            "ln -s /bin/ls /bin/foo; sudo /bin/foo --invalid-flag && true",
+            "ln -s /bin/ls /bin/foo; sudo /bin/foo --invalid-flag; true",
         ])
         .output(&env)?;
 
@@ -137,7 +137,7 @@ fn arg0_native_is_resolved_from_commandline() -> Result<()> {
     let output = Command::new("sh")
         .args([
             "-c",
-            "ln -s /bin/ls /bin/foo; sudo foo --invalid-flag && true",
+            "ln -s /bin/ls /bin/foo; sudo foo --invalid-flag; true",
         ])
         .output(&env)?;
 
