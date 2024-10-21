@@ -69,6 +69,7 @@ pub struct Env {
 pub fn Env(sudoers: impl Into<TextFile>) -> EnvBuilder {
     let mut builder = EnvBuilder::default();
     builder.file("/usr/local/etc/sudoers", sudoers);
+    builder.group("users");
     builder
 }
 
@@ -418,7 +419,7 @@ impl From<String> for User {
 
         Self {
             create_home_directory: false,
-            groups: HashSet::new(),
+            groups: ["users".to_owned()].into_iter().collect(),
             id: None,
             name,
             password: None,

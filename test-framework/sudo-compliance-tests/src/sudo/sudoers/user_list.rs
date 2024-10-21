@@ -76,7 +76,7 @@ fn user_id() -> Result<()> {
 
 #[test]
 fn group_name() -> Result<()> {
-    let env = Env("%root ALL=(ALL:ALL) NOPASSWD: ALL").build()?;
+    let env = Env("%wheel ALL=(ALL:ALL) NOPASSWD: ALL").build()?;
 
     Command::new("sudo")
         .arg("true")

@@ -173,7 +173,7 @@ fn works_when_invoked_through_a_symlink() -> Result<()> {
 
     // symlink has not the setuid bit set
     let stat_output = Command::new("stat")
-        .args(["-c", "%a", symlink_path])
+        .args(["-f", "%p", symlink_path])
         .output(&env)?
         .stdout()?;
 
