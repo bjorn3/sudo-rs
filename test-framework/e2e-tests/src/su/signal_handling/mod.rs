@@ -19,7 +19,7 @@ fn signal_sent_by_child_process_is_ignored() -> Result<()> {
         .output(&env)?;
 
     assert!(output.status().success());
-    assert!(output.stderr().is_empty());
+    assert_eq!(output.stderr(), "");
 
     Ok(())
 }

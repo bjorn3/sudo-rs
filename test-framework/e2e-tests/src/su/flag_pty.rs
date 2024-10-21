@@ -17,7 +17,7 @@ fn fixture() -> Result<Processes> {
 
     let child = Command::new("su")
         .args(["--pty", "-c"])
-        .arg("sh -c 'touch /tmp/barrier; sleep 3'")
+        .arg("sh -c 'touch /tmp/barrier; sleep 3; sleep 1'")
         .tty(true)
         .spawn(&env)?;
 
@@ -122,11 +122,11 @@ fn pty_owner() -> Result<()> {
 
     let stdout = Command::new("su")
         .args(["--pty", "-c"])
-        .arg("stat $(tty) --format '%U %G'")
+        .arg("stat -f '%u %g' $(tty)")
         .tty(true)
         .output(&env)?
         .stdout()?;
-    assert_eq!(stdout.trim(), "root tty");
+    assert_eq!(stdout.trim(), "0 4");
 
     Ok(())
 }
