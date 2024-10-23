@@ -48,7 +48,7 @@ pub struct Context {
     pub use_pty: bool,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum LaunchType {
     Direct = HARDENED_ENUM_VALUE_0,
