@@ -177,6 +177,7 @@ fn works_when_invoked_through_a_symlink() -> Result<()> {
         .output(&env)?
         .stdout()?;
 
+    // FIXME missing output check
     // 777
     eprintln!("{stat_output}");
 

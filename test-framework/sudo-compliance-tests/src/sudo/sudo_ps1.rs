@@ -43,7 +43,7 @@ fn ps1_env_var_is_not_set_when_sudo_ps1_is_set_and_flag_login_is_used() -> Resul
         .stdout()?;
     let sudo_env = helpers::parse_env_output(&stdout)?;
 
-    assert!(!sudo_env.contains_key("PS1"));
+    assert!(!sudo_env.contains_key("PS1")); // FIXME why does this work on Linux and not on FreeBSD
     assert!(!sudo_env.contains_key("SUDO_PS1"));
 
     Ok(())

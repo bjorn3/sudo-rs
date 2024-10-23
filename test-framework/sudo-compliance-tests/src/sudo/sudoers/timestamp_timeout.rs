@@ -69,7 +69,7 @@ Defaults timestamp_timeout=0"
     // try to sudo without a password
     let output = Command::new("sh")
         .arg("-c")
-        .arg(format!("echo {PASSWORD} | sudo -S true; sudo true"))
+        .arg(format!("echo {PASSWORD} | sudo -S true; sudo true && true"))
         .as_user(USERNAME)
         .output(&env)?;
 

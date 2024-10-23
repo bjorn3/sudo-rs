@@ -85,6 +85,7 @@ fn ignores_path_for_qualified_commands() -> Result<()> {
 fn paths_are_matched_using_realpath_in_sudoers() -> Result<()> {
     let env = Env(["ALL ALL = /bin/true"]).build()?;
 
+    // FIXME create symlink
     // this test assumes /bin is a symbolic link for /usr/bin, which is the
     // case on Debian bookworm; if it fails for original sudo, either change the
     // dockerfile or explicitly create a symbolic link
