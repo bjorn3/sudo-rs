@@ -21,8 +21,7 @@ impl PamAuthenticator {
 impl AuthPlugin for PamAuthenticator {
     fn init(&mut self, context: &Context, auth_user: AuthUser) -> Result<(), Error> {
         self.pam = Some(init_pam(
-            matches!(context.launch, LaunchType::Login),
-            matches!(context.launch, LaunchType::Shell),
+            context.launch,
             context.stdin,
             context.non_interactive,
             context.password_feedback,
@@ -86,8 +85,7 @@ impl AuthPlugin for PamAuthenticator {
 }
 
 pub fn init_pam(
-    is_login_shell: bool,
-    is_shell: bool,
+    launch: LaunchType,
     use_stdin: bool,
     non_interactive: bool,
     password_feedback: bool,
@@ -95,10 +93,9 @@ pub fn init_pam(
     requesting_user: &str,
 ) -> PamResult<PamContext<CLIConverser>> {
     // FIXME make it configurable by the packager
-    let service_name = if is_login_shell && cfg!(target_os = "linux") {
-        "sudo-i"
-    } else {
-        "sudo"
+    let service_name = match launch {
+        LaunchType::Login if cfg!(target_os = "linux") => "sudo-i",
+        LaunchType::Login | LaunchType::Shell | LaunchType::Direct => "sudo",
     };
     let mut pam = PamContext::new_cli(
         "sudo",
@@ -108,7 +105,7 @@ pub fn init_pam(
         password_feedback,
         None,
     )?;
-    pam.mark_silent(!is_shell && !is_login_shell);
+    pam.mark_silent(matches!(launch, LaunchType::Direct));
     pam.mark_allow_null_auth_token(false);
     pam.set_requesting_user(requesting_user)?;
     pam.set_user(auth_user)?;
