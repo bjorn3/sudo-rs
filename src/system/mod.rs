@@ -77,7 +77,14 @@ impl FileCloser {
 
     /// Close every file descriptor that is not one of the IO streams or one of the file
     /// descriptors passed via [`FileCloser::except`].
-    pub(crate) fn close_the_universe(self) -> io::Result<()> {
+    ///
+    /// # Safety
+    ///
+    /// This method violates [I/O Safety](https://doc.rust-lang.org/std/io/index.html#io-safety)
+    /// by closing fds that are not owned by `FileCloser`. The caller needs to ensure that none of
+    /// the closed fds are ever accessed again.
+    // FIXME do not return a Result. This makes it way to easy to accidentally violate the safety conditions.
+    pub(crate) unsafe fn close_the_universe(self) -> io::Result<()> {
         let mut fds = self.fds.into_iter();
 
         let Some(mut curr_fd) = fds.next() else {
@@ -927,7 +934,9 @@ mod tests {
 
             closer.except(&should_not_close);
 
-            closer.close_the_universe().unwrap();
+            unsafe {
+                closer.close_the_universe().unwrap();
+            }
 
             assert!(is_closed(&should_close));
 
@@ -954,7 +963,9 @@ mod tests {
             closer.except(&io::stdout());
             closer.except(&io::stderr());
 
-            closer.close_the_universe().unwrap();
+            unsafe {
+                closer.close_the_universe().unwrap();
+            }
 
             assert!(!is_closed(&io::stdin()));
             assert!(!is_closed(&io::stdout()));
