@@ -239,6 +239,7 @@ fn edit_sudoers_file(
             .spawn()?
             .wait_with_output()?;
 
+
         let (_sudoers, errors) = File::open(tmp_path)
             .and_then(|reader| Sudoers::read(reader, tmp_path))
             .map_err(|err| {
