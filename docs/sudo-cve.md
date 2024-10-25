@@ -35,21 +35,21 @@ These CVEs/advisories are possibly relevant to sudo-rs:
 [^3]: Our usage of Rust should mostly prevent heap corruption bugs from occurring
 [^4]: env_reset is always enabled in sudo-rs, additionally we apply filtering to
       several variables to prevent any additional attack paths
-[^5]: -
+[^5]: \-
 [^6]: Sudo-rs uses the suggested realpath function, as it is considered available
       enough for our target systems
 [^7]: To prevent attacks, a PTY must be used when running commands within a TTY,
       which is enabled by default in sudo-rs
-[^9]: -
-[^10]: -
-[^11]: -
-[^12]: -
-[^13]: -
-[^14]: -
-[^15]: -
-[^16]: -
-[^17]: -
-[^19]: -
+[^9]: \-
+[^10]: \-
+[^11]: \-
+[^12]: \-
+[^13]: \-
+[^14]: \-
+[^15]: \-
+[^16]: \-
+[^17]: \-
+[^19]: \-
 
 ## Non-applicable CVEs
 
