@@ -2,7 +2,6 @@
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
 PROJECT_DIR=$(dirname "$SCRIPT_DIR")
-NEW_VERSION="$1"
 
 # Fetch current version
 CURRENT_VERSION=$(sed -n '/version\s*=\s*"\([^"]*\)"/{s//\1/p;q}' "$PROJECT_DIR/Cargo.toml")
