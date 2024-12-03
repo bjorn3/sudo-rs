@@ -34,7 +34,7 @@ pub(crate) struct SuContext {
     pub(crate) environment: Environment,
     user: User,
     requesting_user: CurrentUser,
-    group: Group,
+    group: Option<Group>,
     pub(crate) process: Process,
 }
 
@@ -96,8 +96,7 @@ impl SuContext {
         }
 
         // resolve target group
-        let mut group =
-            Group::from_gid(user.gid)?.ok_or_else(|| Error::GroupNotFound(user.gid.to_string()))?;
+        let mut group = None;
 
         if !options.supp_group.is_empty() || !options.group.is_empty() {
             user.groups.clear();
@@ -108,7 +107,7 @@ impl SuContext {
                 .ok_or_else(|| Error::GroupNotFound(group_name.clone().into()))?;
 
             // last argument is the primary group
-            group = primary_group.clone();
+            group = Some(primary_group.clone());
             user.groups.push(primary_group.gid);
         }
 
@@ -119,7 +118,7 @@ impl SuContext {
 
             // set primary group if none was provided
             if index == 0 && options.group.is_empty() {
-                group = supp_group.clone();
+                group = Some(supp_group.clone());
             }
 
             user.groups.push(supp_group.gid);
@@ -239,8 +238,8 @@ impl RunOptions for SuContext {
         &self.requesting_user
     }
 
-    fn group(&self) -> &crate::system::Group {
-        &self.group
+    fn group(&self) -> Option<&crate::system::Group> {
+        self.group.as_ref()
     }
 
     fn pid(&self) -> ProcessId {
