@@ -306,12 +306,7 @@ fn editor_path_fallback() -> io::Result<PathBuf> {
     let editors = if cfg!(target_os = "linux") {
         &["/usr/bin/editor"][..]
     } else if cfg!(target_os = "freebsd") {
-        &[
-            "/usr/bin/editor", // FIXME remove this from the list. included as compliance tests depend on it
-            "/usr/local/bin/vim",
-            "/usr/local/bin/vi",
-            "/bin/vi",
-        ]
+        &["/usr/local/bin/vim", "/usr/local/bin/vi", "/bin/vi"]
     } else {
         unimplemented!("unknown default editor for target")
     };
