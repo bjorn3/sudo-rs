@@ -266,6 +266,10 @@ mod tests {
         fn use_pty(&self) -> bool {
             true
         }
+
+        fn pwfeedback(&self) -> bool {
+            false
+        }
     }
 
     impl TestConfiguration {
