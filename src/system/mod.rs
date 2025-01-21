@@ -115,12 +115,24 @@ impl FileCloser {
 }
 
 fn close_range(min_fd: c_uint, max_fd: c_uint) -> io::Result<()> {
+    #[cfg(not(target_os = "macos"))]
     if min_fd <= max_fd {
         // SAFETY: this function is safe to call:
         // - any errors while closing a specific fd will be effectively ignored
         // - if the provided range or flags are invalid, that will be reported
         //   as an error but will not cause undefined behaviour
-        //cerr(unsafe { libc::close_range(min_fd, max_fd, 0) })?;
+        cerr(unsafe { libc::close_range(min_fd, max_fd, 0) })?;
+    }
+
+    // macOS doesn't have close_range.
+    #[cfg(target_os = "macos")]
+    // FIXME maybe cap to sysctl(_SC_OPEN_MAX)?
+    for fd in min_fd..=max_fd {
+        unsafe {
+            // Set CLOEXEC instead of directly closing it on macOS to avoid a potential
+            // libdispatch crash.
+            let _ = libc::fcntl(fd as libc::c_int, libc::F_SETFD, libc::FD_CLOEXEC);
+        }
     }
 
     Ok(())
