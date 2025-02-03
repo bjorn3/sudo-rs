@@ -211,12 +211,15 @@ impl ExecClosure {
         }
     }
 
-    fn on_signal(&mut self, registry: &mut EventRegistry<Self>) {
+    fn on_signal(
+        &mut self,
+        registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<ExecClosure>> {
         let info = match self.signal_stream.recv() {
             Ok(info) => info,
             Err(err) => {
                 dev_error!("sudo could not receive signal: {err}");
-                return;
+                return Ok(());
             }
         };
 
@@ -224,7 +227,7 @@ impl ExecClosure {
 
         let Some(command_pid) = self.command_pid else {
             dev_info!("command was terminated, ignoring signal");
-            return;
+            return Ok(());
         };
 
         match info.signal() {
@@ -236,7 +239,7 @@ impl ExecClosure {
                 if let Some(pid) = info.signaler_pid() {
                     if self.is_self_terminating(pid) {
                         // Skip the signal if it was sent by the user and it is self-terminating.
-                        return;
+                        return Ok(());
                     }
                 }
 
@@ -245,6 +248,7 @@ impl ExecClosure {
                 } else {
                     kill(command_pid, signal).ok();
                 }
+                Ok(())
             }
         }
     }
@@ -261,16 +265,20 @@ impl Process for ExecClosure {
     type Break = io::Error;
     type Exit = ExitReason;
 
-    fn on_event(&mut self, event: Self::Event, registry: &mut EventRegistry<Self>) {
+    fn on_event(
+        &mut self,
+        event: Self::Event,
+        registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>> {
         match event {
             ExecEvent::Signal => self.on_signal(registry),
             ExecEvent::ErrPipe => {
                 match self.errpipe_rx.read() {
-                    Err(err) if was_interrupted(&err) => { /* Retry later */ }
-                    Err(err) => registry.set_break(err),
+                    Err(err) if was_interrupted(&err) => Ok(()), // Retry later
+                    Err(err) => Err(StopReason::Break(err)),
                     Ok(error_code) => {
                         // Received error code from the command, forward it to the parent.
-                        registry.set_break(io::Error::from_raw_os_error(error_code));
+                        Err(StopReason::Break(io::Error::from_raw_os_error(error_code)))
                     }
                 }
             }
@@ -281,17 +289,30 @@ impl Process for ExecClosure {
 impl HandleSigchld for ExecClosure {
     const OPTIONS: WaitOptions = WaitOptions::new().all().untraced().no_hang();
 
-    fn on_exit(&mut self, exit_code: c_int, registry: &mut EventRegistry<Self>) {
-        registry.set_exit(ExitReason::Code(exit_code));
+    fn on_exit(
+        &mut self,
+        exit_code: c_int,
+        _registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>> {
         self.command_pid = None;
+        Err(StopReason::Exit(ExitReason::Code(exit_code)))
     }
 
-    fn on_term(&mut self, signal: SignalNumber, registry: &mut EventRegistry<Self>) {
-        registry.set_exit(ExitReason::Signal(signal));
+    fn on_term(
+        &mut self,
+        signal: SignalNumber,
+        _registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>> {
         self.command_pid = None;
+        Err(StopReason::Exit(ExitReason::Signal(signal)))
     }
 
-    fn on_stop(&mut self, signal: SignalNumber, _registry: &mut EventRegistry<Self>) {
+    fn on_stop(
+        &mut self,
+        signal: SignalNumber,
+        _registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>> {
         self.suspend_parent(signal);
+        Ok(())
     }
 }

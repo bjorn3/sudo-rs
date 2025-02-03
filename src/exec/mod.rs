@@ -21,7 +21,7 @@ use crate::{
     common::{
         bin_serde::BinPipe, HARDENED_ENUM_VALUE_0, HARDENED_ENUM_VALUE_1, HARDENED_ENUM_VALUE_2,
     },
-    exec::no_pty::exec_no_pty,
+    exec::{event::StopReason, no_pty::exec_no_pty},
     log::{dev_info, dev_warn, user_error},
     system::{
         _exit,
@@ -241,9 +241,21 @@ fn terminate_process(pid: ProcessId, use_killpg: bool) {
 trait HandleSigchld: Process {
     const OPTIONS: WaitOptions;
 
-    fn on_exit(&mut self, exit_code: c_int, registry: &mut EventRegistry<Self>);
-    fn on_term(&mut self, signal: SignalNumber, registry: &mut EventRegistry<Self>);
-    fn on_stop(&mut self, signal: SignalNumber, registry: &mut EventRegistry<Self>);
+    fn on_exit(
+        &mut self,
+        exit_code: c_int,
+        registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>>;
+    fn on_term(
+        &mut self,
+        signal: SignalNumber,
+        registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>>;
+    fn on_stop(
+        &mut self,
+        signal: SignalNumber,
+        registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>>;
 }
 
 fn handle_sigchld<T: HandleSigchld>(
@@ -251,19 +263,21 @@ fn handle_sigchld<T: HandleSigchld>(
     registry: &mut EventRegistry<T>,
     child_name: &'static str,
     child_pid: ProcessId,
-) {
+) -> Result<(), StopReason<T>> {
     let status = loop {
         match child_pid.wait(T::OPTIONS) {
             Err(WaitError::Io(err)) if was_interrupted(&err) => {}
             // This only happens if we receive `SIGCHLD` but there's no status update from the
             // monitor.
             Err(WaitError::Io(err)) => {
-                return dev_info!("cannot wait for {child_pid} ({child_name}): {err}");
+                dev_info!("cannot wait for {child_pid} ({child_name}): {err}");
+                return Ok(());
             }
             // This only happens if the monitor exited and any process already waited for the
             // monitor.
             Err(WaitError::NotReady) => {
-                return dev_info!("{child_pid} ({child_name}) has no status report");
+                dev_info!("{child_pid} ({child_name}) has no status report");
+                return Ok(());
             }
             Ok((_pid, status)) => break status,
         }
@@ -285,8 +299,10 @@ fn handle_sigchld<T: HandleSigchld>(
         handler.on_term(signal, registry)
     } else if status.did_continue() {
         dev_info!("{child_pid} ({child_name}) continued execution");
+        Ok(())
     } else {
-        dev_warn!("unexpected wait status for {child_pid} ({child_name})")
+        dev_warn!("unexpected wait status for {child_pid} ({child_name})");
+        Ok(())
     }
 }
 

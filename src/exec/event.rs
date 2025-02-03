@@ -6,43 +6,21 @@ use std::{
 
 use libc::{c_short, pollfd, POLLIN, POLLOUT};
 
-use crate::common::{HARDENED_ENUM_VALUE_0, HARDENED_ENUM_VALUE_1};
 use crate::{cutils::cerr, log::dev_debug};
 
 pub(super) trait Process: Sized {
     /// IO Events that this process should handle.
     type Event: Copy + Debug;
     /// Reason why the event loop should break.
-    ///
-    /// See [`EventRegistry::set_break`] for more information.
     type Break;
     /// Reason why the event loop should exit.
-    ///
-    /// See [`EventRegistry::set_exit`] for more information.
     type Exit;
     /// Handle the corresponding event.
-    fn on_event(&mut self, event: Self::Event, registry: &mut EventRegistry<Self>);
-}
-
-#[repr(u32)]
-enum Status<T: Process> {
-    Continue = HARDENED_ENUM_VALUE_0,
-    Stop(StopReason<T>) = HARDENED_ENUM_VALUE_1,
-}
-
-impl<T: Process> Status<T> {
-    fn is_break(&self) -> bool {
-        matches!(self, Self::Stop(StopReason::Break(_)))
-    }
-
-    fn take_stop(&mut self) -> Option<StopReason<T>> {
-        // If the status ends up to be `Continue`, we are replacing it by another `Continue`.
-        let status = std::mem::replace(self, Self::Continue);
-        match status {
-            Status::Continue => None,
-            Status::Stop(reason) => Some(reason),
-        }
-    }
+    fn on_event(
+        &mut self,
+        event: Self::Event,
+        registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>>;
 }
 
 pub(super) enum StopReason<T: Process> {
@@ -102,7 +80,6 @@ struct PollFd<T: Process> {
 /// A type able to register file descriptors to be polled.
 pub(super) struct EventRegistry<T: Process> {
     poll_fds: Vec<PollFd<T>>,
-    status: Status<T>,
 }
 
 impl<T: Process> EventRegistry<T> {
@@ -110,7 +87,6 @@ impl<T: Process> EventRegistry<T> {
     pub(super) const fn new() -> Self {
         Self {
             poll_fds: Vec::new(),
-            status: Status::Continue,
         }
     }
 
@@ -185,28 +161,9 @@ impl<T: Process> EventRegistry<T> {
         Ok(ids)
     }
 
-    /// Stop the event loop when the current event has been handled and set a reason for it.
-    ///
-    /// This means that the event loop will stop even if other events are ready.
-    pub(super) fn set_break(&mut self, reason: T::Break) {
-        self.status = Status::Stop(StopReason::Break(reason));
-    }
-
-    /// Stop the event loop when the events that are ready by now have been handled and set a
-    /// reason for it.
-    pub(super) fn set_exit(&mut self, reason: T::Exit) {
-        self.status = Status::Stop(StopReason::Exit(reason));
-    }
-
-    /// Return whether a break reason has been set already.
-    pub(super) fn got_break(&self) -> bool {
-        self.status.is_break()
-    }
-
     /// Run the event loop over this registry using `process` to handle the produced events.
     ///
-    /// The event loop will continue indefinitely unless you call [`EventRegistry::set_break`] or
-    /// [`EventRegistry::set_exit`].
+    /// The event loop will continue indefinitely unless you return `Err` from [`Process::on_event`].
     #[track_caller]
     pub(super) fn event_loop(mut self, process: &mut T) -> StopReason<T> {
         let mut event_queue = Vec::with_capacity(self.poll_fds.len());
@@ -221,9 +178,7 @@ impl<T: Process> EventRegistry<T> {
                 }
 
                 for event in event_queue.drain(..) {
-                    process.on_event(event, &mut self);
-
-                    if let Some(reason) = self.status.take_stop() {
+                    if let Err(reason) = process.on_event(event, &mut self) {
                         return reason;
                     }
                 }

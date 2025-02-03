@@ -259,14 +259,14 @@ impl<'a> MonitorClosure<'a> {
     }
 
     /// Based on `mon_backchannel_cb`
-    fn read_backchannel(&mut self, registry: &mut EventRegistry<Self>) {
+    fn read_backchannel(&mut self) -> Result<(), StopReason<Self>> {
         match self.backchannel.recv() {
             Err(err) => {
                 // We can try later if receive is interrupted.
                 if err.kind() != io::ErrorKind::Interrupted {
                     // There's something wrong with the backchannel, break the event loop.
                     dev_warn!("cannot read from backchannel: {err}");
-                    registry.set_break(err);
+                    return Err(StopReason::Break(err));
                 }
             }
             Ok(event) => {
@@ -282,17 +282,19 @@ impl<'a> MonitorClosure<'a> {
                 }
             }
         }
+        Ok(())
     }
 
-    fn read_errpipe(&mut self, registry: &mut EventRegistry<Self>) {
+    fn read_errpipe(&mut self) -> Result<(), StopReason<Self>> {
         match self.errpipe_rx.read() {
-            Err(err) if was_interrupted(&err) => { /* Retry later */ }
-            Err(err) => registry.set_break(err),
+            Err(err) if was_interrupted(&err) => Ok(()), // Retry later
+            Err(err) => Err(StopReason::Break(err)),
             Ok(error_code) => {
                 // Received error code from the command, forward it to the parent.
                 self.backchannel
                     .send(&ParentMessage::IoError(error_code))
                     .ok();
+                Ok(())
             }
         }
     }
@@ -336,12 +338,12 @@ impl<'a> MonitorClosure<'a> {
         }
     }
 
-    fn on_signal(&mut self, registry: &mut EventRegistry<Self>) {
+    fn on_signal(&mut self, registry: &mut EventRegistry<Self>) -> Result<(), StopReason<Self>> {
         let info = match self.signal_stream.recv() {
             Ok(info) => info,
             Err(err) => {
                 dev_error!("could not receive signal: {err}");
-                return;
+                return Ok(());
             }
         };
 
@@ -350,7 +352,7 @@ impl<'a> MonitorClosure<'a> {
         // Don't do anything if the command has terminated already
         let Some(command_pid) = self.command_pid else {
             dev_info!("command was terminated, ignoring signal");
-            return;
+            return Ok(());
         };
 
         match info.signal() {
@@ -359,11 +361,12 @@ impl<'a> MonitorClosure<'a> {
                 if let Some(pid) = info.signaler_pid() {
                     if is_self_terminating(pid, command_pid, self.command_pgrp) {
                         // Skip the signal if it was sent by the user and it is self-terminating.
-                        return;
+                        return Ok(());
                     }
                 }
 
-                self.send_signal(signal, command_pid, false)
+                self.send_signal(signal, command_pid, false);
+                Ok(())
             }
         }
     }
@@ -406,11 +409,15 @@ impl Process for MonitorClosure<'_> {
     type Break = io::Error;
     type Exit = CommandStatus;
 
-    fn on_event(&mut self, event: Self::Event, registry: &mut EventRegistry<Self>) {
+    fn on_event(
+        &mut self,
+        event: Self::Event,
+        registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>> {
         match event {
             MonitorEvent::Signal => self.on_signal(registry),
-            MonitorEvent::ReadableErrPipe => self.read_errpipe(registry),
-            MonitorEvent::ReadableBackchannel => self.read_backchannel(registry),
+            MonitorEvent::ReadableErrPipe => self.read_errpipe(),
+            MonitorEvent::ReadableBackchannel => self.read_backchannel(),
         }
     }
 }
@@ -418,17 +425,29 @@ impl Process for MonitorClosure<'_> {
 impl HandleSigchld for MonitorClosure<'_> {
     const OPTIONS: WaitOptions = WaitOptions::new().untraced().no_hang();
 
-    fn on_exit(&mut self, exit_code: c_int, registry: &mut EventRegistry<Self>) {
-        registry.set_exit(CommandStatus::Exit(exit_code));
+    fn on_exit(
+        &mut self,
+        exit_code: c_int,
+        _registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>> {
         self.command_pid = None;
+        Err(StopReason::Exit(CommandStatus::Exit(exit_code)))
     }
 
-    fn on_term(&mut self, signal: c_int, registry: &mut EventRegistry<Self>) {
-        registry.set_exit(CommandStatus::Term(signal));
+    fn on_term(
+        &mut self,
+        signal: c_int,
+        _registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>> {
         self.command_pid = None;
+        Err(StopReason::Exit(CommandStatus::Term(signal)))
     }
 
-    fn on_stop(&mut self, signal: c_int, _registry: &mut EventRegistry<Self>) {
+    fn on_stop(
+        &mut self,
+        signal: c_int,
+        _registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>> {
         // Save the foreground process group ID so we can restore it later.
         if let Ok(pgrp) = self.pty_follower.tcgetpgrp() {
             if pgrp != self.monitor_pgrp {
@@ -438,5 +457,6 @@ impl HandleSigchld for MonitorClosure<'_> {
         self.backchannel
             .send(&CommandStatus::Stop(signal).into())
             .ok();
+        Ok(())
     }
 }

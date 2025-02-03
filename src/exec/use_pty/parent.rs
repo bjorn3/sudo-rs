@@ -356,24 +356,25 @@ impl ParentClosure {
     }
 
     /// Read an event from the backchannel and return the event if it should break the event loop.
-    fn on_message_received(&mut self, registry: &mut EventRegistry<Self>) {
+    fn on_message_received(
+        &mut self,
+        registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>> {
         match self.backchannel.recv() {
             Err(err) => {
                 match err.kind() {
                     // If we get EOF the monitor exited or was killed
                     io::ErrorKind::UnexpectedEof => {
                         dev_info!("received EOF from backchannel");
-                        registry.set_exit(err.into());
+                        Err(StopReason::Exit(err.into()))
                     }
                     // We can try later if receive is interrupted.
-                    io::ErrorKind::Interrupted => {}
+                    io::ErrorKind::Interrupted => Ok(()),
                     // Failed to read command status. This means that something is wrong with the socket
                     // and we should stop.
                     _ => {
                         dev_error!("cannot receive message from backchannel: {err}");
-                        if !registry.got_break() {
-                            registry.set_break(err);
-                        }
+                        Err(StopReason::Break(err))
                     }
                 }
             }
@@ -384,6 +385,7 @@ impl ParentClosure {
                     ParentMessage::CommandPid(pid) => {
                         dev_info!("received command PID ({pid}) from monitor");
                         self.command_pid = pid.into();
+                        Ok(())
                     }
                     ParentMessage::CommandStatus(status) => {
                         // The command terminated or the monitor was not able to spawn it. We should stop
@@ -391,11 +393,11 @@ impl ParentClosure {
                         match status {
                             CommandStatus::Exit(exit_code) => {
                                 dev_info!("command exited with status code {exit_code}");
-                                registry.set_exit(ExitReason::Code(exit_code).into());
+                                Err(StopReason::Exit(ExitReason::Code(exit_code).into()))
                             }
                             CommandStatus::Term(signal) => {
                                 dev_info!("command was terminated by {}", signal_fmt(signal));
-                                registry.set_exit(ExitReason::Signal(signal).into());
+                                Err(StopReason::Exit(ExitReason::Signal(signal).into()))
                             }
                             CommandStatus::Stop(signal) => {
                                 dev_info!(
@@ -408,17 +410,18 @@ impl ParentClosure {
                                 }
 
                                 self.tty_pipe.resume_events(registry);
+                                Ok(())
                             }
                         }
                     }
                     ParentMessage::IoError(code) => {
                         let err = io::Error::from_raw_os_error(code);
                         dev_info!("received error ({code}) for monitor: {err}");
-                        registry.set_break(err);
+                        Err(StopReason::Break(err))
                     }
                     ParentMessage::ShortRead => {
                         dev_info!("received short read error for monitor");
-                        registry.set_break(io::ErrorKind::UnexpectedEof.into());
+                        Err(StopReason::Break(io::ErrorKind::UnexpectedEof.into()))
                     }
                 }
             }
@@ -460,7 +463,10 @@ impl ParentClosure {
     /// Send the first message in the event queue using the backchannel, if any.
     ///
     /// Calling this function will block until the backchannel can be written.
-    fn check_message_queue(&mut self, registry: &mut EventRegistry<Self>) {
+    fn check_message_queue(
+        &mut self,
+        registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>> {
         if let Some(msg) = self.message_queue.front() {
             dev_info!("sending message {msg:?} to monitor over backchannel");
             match self.backchannel.send(msg) {
@@ -477,11 +483,12 @@ impl ParentClosure {
                     if err.kind() != io::ErrorKind::Interrupted {
                         // There's something wrong with the backchannel, break the event loop.
                         dev_error!("cannot send via backchannel {err}");
-                        registry.set_break(err);
+                        return Err(StopReason::Break(err));
                     }
                 }
             }
         }
+        Ok(())
     }
 
     /// Suspend sudo if the command is suspended.
@@ -606,12 +613,12 @@ impl ParentClosure {
         Ok(())
     }
 
-    fn on_signal(&mut self, registry: &mut EventRegistry<Self>) {
+    fn on_signal(&mut self, registry: &mut EventRegistry<Self>) -> Result<(), StopReason<Self>> {
         let info = match self.signal_stream.recv() {
             Ok(info) => info,
             Err(err) => {
                 dev_error!("parent could not receive signal: {err}");
-                return;
+                return Ok(());
             }
         };
 
@@ -619,29 +626,32 @@ impl ParentClosure {
 
         let Some(monitor_pid) = self.monitor_pid else {
             dev_info!("monitor was terminated, ignoring signal");
-            return;
+            return Ok(());
         };
 
         match info.signal() {
             SIGCHLD => handle_sigchld(self, registry, "monitor", monitor_pid),
             SIGCONT => {
                 self.resume_terminal().ok();
+                Ok(())
             }
             SIGWINCH => {
                 if let Err(err) = self.handle_sigwinch() {
                     dev_warn!("cannot resize terminal: {}", err);
                 }
+                Ok(())
             }
             signal => {
                 if let Some(pid) = info.signaler_pid() {
                     if self.is_self_terminating(pid) {
                         // Skip the signal if it was sent by the user and it is self-terminating.
-                        return;
+                        return Ok(());
                     }
                 }
 
                 // FIXME: check `send_command_status`
-                self.schedule_signal(signal, registry)
+                self.schedule_signal(signal, registry);
+                Ok(())
             }
         }
     }
@@ -697,7 +707,11 @@ impl Process for ParentClosure {
     type Break = io::Error;
     type Exit = ParentExit;
 
-    fn on_event(&mut self, event: Self::Event, registry: &mut EventRegistry<Self>) {
+    fn on_event(
+        &mut self,
+        event: Self::Event,
+        registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>> {
         match event {
             ParentEvent::Signal => self.on_signal(registry),
             ParentEvent::Tty(poll_event) => {
@@ -708,9 +722,11 @@ impl Process for ParentClosure {
                 } else {
                     self.tty_pipe.on_left_event(poll_event, registry).ok();
                 }
+                Ok(())
             }
             ParentEvent::Pty(poll_event) => {
                 self.tty_pipe.on_right_event(poll_event, registry).ok();
+                Ok(())
             }
             ParentEvent::Backchannel(poll_event) => match poll_event {
                 PollEvent::Readable => self.on_message_received(registry),
@@ -723,18 +739,33 @@ impl Process for ParentClosure {
 impl HandleSigchld for ParentClosure {
     const OPTIONS: WaitOptions = WaitOptions::new().all().untraced().no_hang();
 
-    fn on_exit(&mut self, _exit_code: c_int, _registry: &mut EventRegistry<Self>) {
+    fn on_exit(
+        &mut self,
+        _exit_code: c_int,
+        _registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>> {
         self.monitor_pid = None;
+        Ok(())
     }
 
-    fn on_term(&mut self, _signal: SignalNumber, _registry: &mut EventRegistry<Self>) {
+    fn on_term(
+        &mut self,
+        _signal: SignalNumber,
+        _registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>> {
         self.monitor_pid = None;
+        Ok(())
     }
 
-    fn on_stop(&mut self, signal: SignalNumber, registry: &mut EventRegistry<Self>) {
+    fn on_stop(
+        &mut self,
+        signal: SignalNumber,
+        registry: &mut EventRegistry<Self>,
+    ) -> Result<(), StopReason<Self>> {
         if let Some(signal) = self.suspend_pty(signal, registry) {
             self.schedule_signal(signal, registry);
         }
         self.tty_pipe.resume_events(registry);
+        Ok(())
     }
 }
