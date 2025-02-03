@@ -43,17 +43,6 @@ impl<T: Process> Status<T> {
             Status::Stop(reason) => Some(reason),
         }
     }
-
-    fn take_exit(&mut self) -> Option<T::Exit> {
-        match self.take_stop()? {
-            reason @ StopReason::Break(_) => {
-                // Replace back the status because it was not an `Exit`.
-                *self = Self::Stop(reason);
-                None
-            }
-            StopReason::Exit(exit_reason) => Some(exit_reason),
-        }
-    }
 }
 
 pub(super) enum StopReason<T: Process> {
@@ -234,14 +223,10 @@ impl<T: Process> EventRegistry<T> {
                 for event in event_queue.drain(..) {
                     process.on_event(event, &mut self);
 
-                    if let Some(reason) = self.status.take_exit() {
-                        return StopReason::Exit(reason);
+                    if let Some(reason) = self.status.take_stop() {
+                        return reason;
                     }
                 }
-            }
-
-            if let Some(reason) = self.status.take_stop() {
-                return reason;
             }
         }
     }
