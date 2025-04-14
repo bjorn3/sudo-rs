@@ -6,7 +6,7 @@ mod use_pty;
 use std::{
     borrow::Cow,
     env,
-    ffi::{c_int, OsStr},
+    ffi::{c_int, OsStr, OsString},
     io,
     os::unix::ffi::OsStrExt,
     os::unix::process::CommandExt,
@@ -43,6 +43,7 @@ pub struct RunOptions<'a> {
     pub group: &'a Group,
 
     pub use_pty: bool,
+    pub noexec: bool,
 }
 
 /// Based on `ogsudo`s `exec_pty` function.
@@ -72,6 +73,23 @@ pub fn run_command(
             .unwrap_or_default();
         process_name.insert(0, b'-');
         command.arg0(OsStr::from_bytes(&process_name));
+    }
+
+    if options.noexec {
+        let existing_ld_preload = command
+            .get_envs()
+            // FIXME use correct env var for macOS once we support LD_PRELOAD on it
+            .find(|&(env, _)| env == "LD_PRELOAD")
+            .unwrap_or_default()
+            .1
+            .unwrap_or_default();
+        // FIXME find correct path
+        let mut new_ld_preload = OsString::from("sudo_noexec_so/target/release/libsudo_noexec.so");
+        if !existing_ld_preload.is_empty() {
+            new_ld_preload.push(":");
+            new_ld_preload.push(existing_ld_preload);
+        }
+        command.env("LD_PRELOAD", new_ld_preload);
     }
 
     // Decide if the pwd should be changed. `--chdir` takes precedence over `-i`.
