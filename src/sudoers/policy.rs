@@ -85,7 +85,8 @@ impl Judgement {
                 Restrictions {
                     use_pty: self.settings.use_pty(),
                     trust_environment: tag.allows_setenv(),
-                    noexec: tag.noexec,
+                    // FIXME allow overriding Defaults noexec with EXEC
+                    noexec: self.settings.noexec() || tag.noexec,
                     env_keep: self.settings.env_keep(),
                     env_check: self.settings.env_check(),
                     chdir: match tag.cwd.as_ref() {
