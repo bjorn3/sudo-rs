@@ -74,9 +74,57 @@ mod noexec {
         unsafe { syscall(SYS_seccomp, operation, flags, args) as c_int }
     }
 
-    //#[used]
-    //#[unsafe(link_section = ".init_array")]
-    //static NOEXEC_CTOR: extern "C" fn() = noexec_ctor;
+    unsafe fn handle_notifications(notify_fd: c_int) -> ! {
+        unsafe {
+            let mut sizes = seccomp_notif_sizes {
+                seccomp_notif: 0,
+                seccomp_notif_resp: 0,
+                seccomp_data: 0,
+            };
+            if seccomp(SECCOMP_GET_NOTIF_SIZES, 0, &mut sizes) == -1 {
+                libc::abort();
+            }
+
+            let req = calloc(
+                1,
+                cmp::max(sizes.seccomp_notif.into(), size_of::<seccomp_notif>()),
+            )
+            .cast::<seccomp_notif>();
+            let resp = calloc(
+                1,
+                cmp::max(
+                    sizes.seccomp_notif_resp.into(),
+                    size_of::<seccomp_notif_resp>(),
+                ),
+            )
+            .cast::<seccomp_notif_resp>();
+            if req.is_null() || resp.is_null() {
+                libc::abort();
+            }
+
+            // FIXME handle error
+            if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_RECV, req) == -1 {
+                libc::abort();
+            }
+
+            (*resp).id = (*req).id;
+            (*resp).val = 0;
+            (*resp).error = 0;
+            (*resp).flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE as u32;
+
+            // FIXME handle error
+            if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_SEND, resp) == -1 {
+                libc::abort();
+            }
+
+            // Exit the helper process after the target process has been
+            // exec'ed. This will close the seccomp_unotify fd after which
+            // all SECCOMP_RET_USER_NOTIF will result in ENOSYS
+
+            // FIXME return EACCESS rather than ENOSYS.
+            libc::exit(0);
+        }
+    }
 
     pub fn add_noexec_filter(command: &mut Command) {
         unsafe {
@@ -115,56 +163,14 @@ mod noexec {
                 let notify_fd = seccomp(
                     SECCOMP_SET_MODE_FILTER,
                     SECCOMP_FILTER_FLAG_NEW_LISTENER as _,
-                    &exec_fprog as *const sock_fprog as *mut sock_fprog,
+                    addr_of!(exec_fprog).cast_mut(),
                 );
                 if fork() == 0 {
                     close(notify_fd);
-                    Ok(())
-                } else {
-                    let mut sizes = seccomp_notif_sizes {
-                        seccomp_notif: 0,
-                        seccomp_notif_resp: 0,
-                        seccomp_data: 0,
-                    };
-                    if seccomp(SECCOMP_GET_NOTIF_SIZES, 0, &mut sizes) == -1 {
-                        libc::abort();
-                    }
-
-                    let req = calloc(
-                        1,
-                        cmp::max(sizes.seccomp_notif.into(), size_of::<seccomp_notif>()),
-                    )
-                    .cast::<seccomp_notif>();
-                    let resp = calloc(
-                        1,
-                        cmp::max(
-                            sizes.seccomp_notif_resp.into(),
-                            size_of::<seccomp_notif_resp>(),
-                        ),
-                    )
-                    .cast::<seccomp_notif_resp>();
-                    if req.is_null() || resp.is_null() {
-                        libc::abort();
-                    }
-
-                    // FIXME handle error
-                    ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_RECV, req);
-
-                    (*resp).id = (*req).id;
-                    (*resp).val = 0;
-                    (*resp).error = 0;
-                    (*resp).flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE as u32;
-
-                    // FIXME handle error
-                    ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_SEND, resp);
-
-                    // Exit the helper process after the target process has been
-                    // exec'ed. This will close the seccomp_unotify fd after which
-                    // all SECCOMP_RET_USER_NOTIF will result in ENOSYS
-
-                    // FIXME return EACCESS rather than ENOSYS.
-                    libc::exit(0);
+                    return Ok(());
                 }
+
+                handle_notifications(notify_fd);
             });
         }
     }
