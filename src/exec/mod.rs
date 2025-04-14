@@ -6,7 +6,7 @@ mod use_pty;
 use std::{
     borrow::Cow,
     env,
-    ffi::{c_int, OsStr, OsString},
+    ffi::{c_int, OsStr},
     io,
     os::unix::ffi::OsStrExt,
     os::unix::process::CommandExt,
@@ -54,6 +54,8 @@ mod noexec {
 
     use std::cmp;
     use std::mem::offset_of;
+    use std::os::unix::process::CommandExt;
+    use std::process::Command;
     use std::ptr::addr_of;
 
     use libc::{
@@ -76,38 +78,40 @@ mod noexec {
     //#[unsafe(link_section = ".init_array")]
     //static NOEXEC_CTOR: extern "C" fn() = noexec_ctor;
 
-    pub extern "C" fn noexec_ctor() {
-        // SAFETY: libc unnecessarily marks these functions as unsafe
-        let exec_filter: [sock_filter; 5] = unsafe {
-            [
-                // Load syscall number into the accumulator
-                BPF_STMT((BPF_LD | BPF_ABS) as _, offset_of!(seccomp_data, nr) as _),
-                // Jump to user notify for execve/execveat
-                BPF_JUMP((BPF_JMP | BPF_JEQ | BPF_K) as _, SYS_execve as _, 2, 0),
-                BPF_JUMP((BPF_JMP | BPF_JEQ | BPF_K) as _, SYS_execveat as _, 1, 0),
-                // Allow non-matching syscalls
-                BPF_STMT((BPF_RET | BPF_K) as _, SECCOMP_RET_ALLOW),
-                // Notify sudo about execve/execveat syscall
-                BPF_STMT((BPF_RET | BPF_K) as _, SECCOMP_RET_USER_NOTIF as _),
-            ]
-        };
-
-        let exec_fprog = sock_fprog {
-            len: 5,
-            filter: addr_of!(exec_filter) as *mut sock_filter,
-        };
-
-        // SAFETY: The first prctl is trivially safe as it doesn't touch any memory
-        // and the second prctl passes a valid sock_fprog as argument.
+    pub fn add_noexec_filter(command: &mut Command) {
         unsafe {
-            // SECCOMP_SET_MODE_FILTER will fail unless the process has
-            // CAP_SYS_ADMIN or the no_new_privs bit is set.
-            if prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == 0 {
+            command.pre_exec(|| {
+                // SAFETY: libc unnecessarily marks these functions as unsafe
+                let exec_filter: [sock_filter; 5] = [
+                    // Load syscall number into the accumulator
+                    BPF_STMT((BPF_LD | BPF_ABS) as _, offset_of!(seccomp_data, nr) as _),
+                    // Jump to user notify for execve/execveat
+                    BPF_JUMP((BPF_JMP | BPF_JEQ | BPF_K) as _, SYS_execve as _, 2, 0),
+                    BPF_JUMP((BPF_JMP | BPF_JEQ | BPF_K) as _, SYS_execveat as _, 1, 0),
+                    // Allow non-matching syscalls
+                    BPF_STMT((BPF_RET | BPF_K) as _, SECCOMP_RET_ALLOW),
+                    // Notify sudo about execve/execveat syscall
+                    BPF_STMT((BPF_RET | BPF_K) as _, SECCOMP_RET_USER_NOTIF as _),
+                ];
+
+                let exec_fprog = sock_fprog {
+                    len: 5,
+                    filter: addr_of!(exec_filter) as *mut sock_filter,
+                };
+
+                // SAFETY: Trivially safe as it doesn't touch any memory.
+                // SECCOMP_SET_MODE_FILTER will fail unless the process has
+                // CAP_SYS_ADMIN or the no_new_privs bit is set.
+                if prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
+                    return Err(todo!());
+                }
+
                 // While the man page warns againt using seccomp_unotify as security
                 // mechanism, the TOCTOU problem that is described there isn't
                 // relevant here. We only SECCOMP_USER_NOTIF_FLAG_CONTINUE the first
                 // execve which is done by ourself and thus trusted.
                 // FIXME handle error
+                // SAFETY: Passes a valid sock_fprog as argument.
                 let notify_fd = seccomp(
                     SECCOMP_SET_MODE_FILTER,
                     SECCOMP_FILTER_FLAG_NEW_LISTENER as _,
@@ -115,6 +119,7 @@ mod noexec {
                 );
                 if fork() == 0 {
                     close(notify_fd);
+                    Ok(())
                 } else {
                     let mut sizes = seccomp_notif_sizes {
                         seccomp_notif: 0,
@@ -160,7 +165,7 @@ mod noexec {
                     // FIXME return EACCESS rather than ENOSYS.
                     libc::exit(0);
                 }
-            }
+            });
         }
     }
 }
@@ -195,26 +200,7 @@ pub fn run_command(
     }
 
     if options.noexec {
-        /*let existing_ld_preload = command
-            .get_envs()
-            // FIXME use correct env var for macOS once we support LD_PRELOAD on it
-            .find(|&(env, _)| env == "LD_PRELOAD")
-            .unwrap_or_default()
-            .1
-            .unwrap_or_default();
-        // FIXME find correct path
-        let mut new_ld_preload = OsString::from("sudo_noexec_so/target/release/libsudo_noexec.so");
-        if !existing_ld_preload.is_empty() {
-            new_ld_preload.push(":");
-            new_ld_preload.push(existing_ld_preload);
-        }
-        command.env("LD_PRELOAD", new_ld_preload);*/
-        unsafe {
-            command.pre_exec(|| {
-                noexec::noexec_ctor();
-                Ok(())
-            });
-        }
+        noexec::add_noexec_filter(&mut command);
     }
 
     // Decide if the pwd should be changed. `--chdir` takes precedence over `-i`.
