@@ -62,8 +62,9 @@ mod noexec {
         c_int, c_uint, c_ulong, calloc, close, fork, ioctl, prctl, seccomp_data, seccomp_notif,
         seccomp_notif_resp, seccomp_notif_sizes, sock_filter, sock_fprog, syscall, SYS_execve,
         SYS_execveat, SYS_seccomp, BPF_ABS, BPF_JEQ, BPF_JMP, BPF_JUMP, BPF_K, BPF_LD, BPF_RET,
-        BPF_STMT, PR_SET_NO_NEW_PRIVS, SECCOMP_FILTER_FLAG_NEW_LISTENER, SECCOMP_GET_NOTIF_SIZES,
-        SECCOMP_RET_ALLOW, SECCOMP_SET_MODE_FILTER, SECCOMP_USER_NOTIF_FLAG_CONTINUE,
+        BPF_STMT, PR_SET_NO_NEW_PRIVS, SECCOMP_FILTER_FLAG_NEW_LISTENER,
+        SECCOMP_FILTER_FLAG_WAIT_KILLABLE_RECV, SECCOMP_GET_NOTIF_SIZES, SECCOMP_RET_ALLOW,
+        SECCOMP_SET_MODE_FILTER, SECCOMP_USER_NOTIF_FLAG_CONTINUE,
     };
 
     const SECCOMP_RET_USER_NOTIF: c_uint = 0x7fc00000;
@@ -74,7 +75,15 @@ mod noexec {
         unsafe { syscall(SYS_seccomp, operation, flags, args) as c_int }
     }
 
-    unsafe fn handle_notifications(notify_fd: c_int) -> ! {
+    struct NotifyAllocs {
+        req: *mut seccomp_notif,
+        resp: *mut seccomp_notif_resp,
+    }
+
+    unsafe impl Send for NotifyAllocs {}
+    unsafe impl Sync for NotifyAllocs {}
+
+    fn alloc_notify_allocs() -> NotifyAllocs {
         unsafe {
             let mut sizes = seccomp_notif_sizes {
                 seccomp_notif: 0,
@@ -102,6 +111,15 @@ mod noexec {
                 libc::abort();
             }
 
+            NotifyAllocs { req, resp }
+        }
+    }
+
+    unsafe fn handle_notifications(
+        notify_fd: c_int,
+        NotifyAllocs { req, resp }: NotifyAllocs,
+    ) -> ! {
+        unsafe {
             // FIXME handle error
             if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_RECV, req) == -1 {
                 libc::abort();
@@ -127,8 +145,10 @@ mod noexec {
     }
 
     pub fn add_noexec_filter(command: &mut Command) {
+        let mut notify_allocs = Some(alloc_notify_allocs());
+
         unsafe {
-            command.pre_exec(|| {
+            command.pre_exec(move || {
                 // SAFETY: libc unnecessarily marks these functions as unsafe
                 let exec_filter: [sock_filter; 5] = [
                     // Load syscall number into the accumulator
@@ -162,15 +182,19 @@ mod noexec {
                 // SAFETY: Passes a valid sock_fprog as argument.
                 let notify_fd = seccomp(
                     SECCOMP_SET_MODE_FILTER,
-                    SECCOMP_FILTER_FLAG_NEW_LISTENER as _,
+                    (SECCOMP_FILTER_FLAG_NEW_LISTENER | SECCOMP_FILTER_FLAG_WAIT_KILLABLE_RECV)
+                        as _,
                     addr_of!(exec_fprog).cast_mut(),
                 );
-                if fork() == 0 {
+                if fork() != 0 {
                     close(notify_fd);
                     return Ok(());
                 }
 
-                handle_notifications(notify_fd);
+                let Some(notify_allocs) = notify_allocs.take() else {
+                    libc::abort();
+                };
+                handle_notifications(notify_fd, notify_allocs);
             });
         }
     }
