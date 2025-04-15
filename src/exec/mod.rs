@@ -26,7 +26,9 @@ use crate::{
         signal::{consts::*, signal_name},
         wait::{Wait, WaitError, WaitOptions},
     },
-    system::{kill, set_target_user, signal::SignalNumber, term::UserTerm, Group, User},
+    system::{
+        kill, set_target_user, signal::SignalNumber, term::UserTerm, FileCloser, Group, User,
+    },
 };
 
 use self::{
@@ -77,12 +79,16 @@ pub fn run_command(
         command.arg0(OsStr::from_bytes(&process_name));
     }
 
+    let mut file_closer = FileCloser::new();
+
     if options.noexec {
         #[cfg(target_os = "linux")]
-        noexec::add_noexec_filter(&mut command);
+        noexec::add_noexec_filter(&mut command, &mut file_closer);
 
         #[cfg(not(target_os = "linux"))]
-        return Err(io::Error::other("NOEXEC is currently only supported on Linux"))
+        return Err(io::Error::other(
+            "NOEXEC is currently only supported on Linux",
+        ));
     }
 
     // Decide if the pwd should be changed. `--chdir` takes precedence over `-i`.
@@ -119,14 +125,14 @@ pub fn run_command(
 
     if options.use_pty {
         match UserTerm::open() {
-            Ok(user_tty) => exec_pty(sudo_pid, command, user_tty),
+            Ok(user_tty) => exec_pty(sudo_pid, file_closer, command, user_tty),
             Err(err) => {
                 dev_info!("Could not open user's terminal, not allocating a pty: {err}");
-                exec_no_pty(sudo_pid, command)
+                exec_no_pty(sudo_pid, file_closer, command)
             }
         }
     } else {
-        exec_no_pty(sudo_pid, command)
+        exec_no_pty(sudo_pid, file_closer, command)
     }
 }
 

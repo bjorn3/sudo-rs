@@ -1,20 +1,26 @@
 // On Linux we can use a seccomp() filter to disable exec.
 
 use std::alloc::{handle_alloc_error, GlobalAlloc, Layout};
-use std::mem::offset_of;
+use std::ffi::c_void;
+use std::mem::{offset_of, zeroed};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::process::Command;
-use std::ptr::addr_of;
-use std::{cmp, io};
+use std::ptr::{self, addr_of};
+use std::{cmp, io, thread};
 
 use libc::{
-    c_int, c_uint, c_ulong, close, fork, ioctl, prctl, seccomp_data, seccomp_notif,
-    seccomp_notif_resp, seccomp_notif_sizes, sock_filter, sock_fprog, syscall, SYS_execve,
-    SYS_execveat, SYS_seccomp, __errno_location, BPF_ABS, BPF_JEQ, BPF_JMP, BPF_JUMP, BPF_K,
-    BPF_LD, BPF_RET, BPF_STMT, EACCES, ENOENT, PR_SET_NO_NEW_PRIVS,
-    SECCOMP_FILTER_FLAG_NEW_LISTENER, SECCOMP_GET_NOTIF_SIZES, SECCOMP_RET_ALLOW,
-    SECCOMP_SET_MODE_FILTER, SECCOMP_USER_NOTIF_FLAG_CONTINUE,
+    c_int, c_uint, c_ulong, close, cmsghdr, ioctl, iovec, msghdr, prctl, recvmsg, seccomp_data,
+    seccomp_notif, seccomp_notif_resp, seccomp_notif_sizes, sendmsg, sock_filter, sock_fprog,
+    syscall, SYS_execve, SYS_execveat, SYS_seccomp, __errno_location, BPF_ABS, BPF_JEQ, BPF_JMP,
+    BPF_JUMP, BPF_K, BPF_LD, BPF_RET, BPF_STMT, CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE,
+    EACCES, ENOENT, MSG_TRUNC, PR_SET_NO_NEW_PRIVS, SCM_RIGHTS, SECCOMP_FILTER_FLAG_NEW_LISTENER,
+    SECCOMP_GET_NOTIF_SIZES, SECCOMP_RET_ALLOW, SECCOMP_SET_MODE_FILTER,
+    SECCOMP_USER_NOTIF_FLAG_CONTINUE, SOL_SOCKET,
 };
+
+use crate::system::FileCloser;
 
 const SECCOMP_RET_USER_NOTIF: c_uint = 0x7fc00000;
 const SECCOMP_IOCTL_NOTIF_RECV: c_ulong = 0xc0502100;
@@ -78,14 +84,13 @@ fn alloc_notify_allocs() -> NotifyAllocs {
     }
 }
 
-unsafe fn handle_notifications(
-    notify_fd: c_int,
-    NotifyAllocs {
+unsafe fn handle_notifications(notify_fd: OwnedFd) -> ! {
+    let NotifyAllocs {
         req,
         req_size,
         resp,
-    }: NotifyAllocs,
-) -> ! {
+    } = alloc_notify_allocs();
+
     unsafe {
         loop {
             // SECCOMP_IOCTL_NOTIF_RECV expects the target struct to be zeroed
@@ -93,7 +98,7 @@ unsafe fn handle_notifications(
             std::ptr::write_bytes(req.cast::<u8>(), 0, req_size);
 
             // SAFETY: A valid pointer to a seccomp_notify is passed in
-            if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_RECV, req) == -1 {
+            if ioctl(notify_fd.as_raw_fd(), SECCOMP_IOCTL_NOTIF_RECV, req) == -1 {
                 // SAFETY: Trivial
                 if *__errno_location() == ENOENT {
                     continue; // Syscall was interrupted
@@ -109,7 +114,7 @@ unsafe fn handle_notifications(
             (*resp).error = 0;
             (*resp).flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE as _;
 
-            if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_SEND, resp) == -1 {
+            if ioctl(notify_fd.as_raw_fd(), SECCOMP_IOCTL_NOTIF_SEND, resp) == -1 {
                 // SAFETY: Trivial
                 if *__errno_location() == ENOENT {
                     continue; // Syscall was interrupted
@@ -126,7 +131,7 @@ unsafe fn handle_notifications(
             std::ptr::write_bytes(req.cast::<u8>(), 0, req_size);
 
             // SAFETY: A valid pointer to a seccomp_notify is passed in
-            if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_RECV, req) == -1 {
+            if ioctl(notify_fd.as_raw_fd(), SECCOMP_IOCTL_NOTIF_RECV, req) == -1 {
                 // SAFETY: Trivial
                 if *__errno_location() == ENOENT {
                     continue; // Syscall was interrupted
@@ -142,7 +147,7 @@ unsafe fn handle_notifications(
             (*resp).error = -EACCES;
             (*resp).flags = 0;
 
-            if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_SEND, resp) == -1 {
+            if ioctl(notify_fd.as_raw_fd(), SECCOMP_IOCTL_NOTIF_SEND, resp) == -1 {
                 // SAFETY: Trivial
                 if *__errno_location() == ENOENT {
                     continue; // Syscall was interrupted
@@ -154,8 +159,61 @@ unsafe fn handle_notifications(
     }
 }
 
-pub fn add_noexec_filter(command: &mut Command) {
-    let mut notify_allocs = Some(alloc_notify_allocs());
+#[repr(C)]
+union SingleRightAnciliaryData {
+    buf: [u8; unsafe { CMSG_SPACE(size_of::<c_int>() as u32) as usize }],
+    _align: cmsghdr,
+}
+
+pub fn add_noexec_filter(command: &mut Command, file_closer: &mut FileCloser) {
+    let (tx_fd, rx_fd) = UnixStream::pair().unwrap();
+
+    // FIXME spawn thread receiving notify_fd from rx_fd and calling handle_notifications
+    thread::spawn(move || {
+        let mut data = [0u8; 1];
+        let mut iov = iovec {
+            iov_base: &mut data as *mut [u8; 1] as *mut c_void,
+            iov_len: 1,
+        };
+
+        let mut msg: msghdr = unsafe { zeroed() };
+        msg.msg_name = ptr::null_mut();
+        msg.msg_namelen = 0;
+        msg.msg_iov = &mut iov;
+        msg.msg_iovlen = 1;
+
+        let mut control: SingleRightAnciliaryData = unsafe { zeroed() };
+        msg.msg_control = &mut control as *mut _ as *mut _;
+        // FIXME stacked borrows violation?
+        msg.msg_controllen = unsafe { control.buf.len() };
+
+        if unsafe { recvmsg(rx_fd.as_raw_fd(), &mut msg, 0) } == -1 {
+            panic!("failed to recvmsg: {}", io::Error::last_os_error());
+        }
+
+        if msg.msg_flags & MSG_TRUNC == MSG_TRUNC {
+            unreachable!();
+        }
+
+        let cmsgp = unsafe { CMSG_FIRSTHDR(&mut msg) };
+        unsafe {
+            if cmsgp.is_null()
+                || (*cmsgp).cmsg_len != CMSG_LEN(size_of::<c_int>() as u32) as usize
+                || (*cmsgp).cmsg_level != SOL_SOCKET
+                || (*cmsgp).cmsg_type != SCM_RIGHTS
+            {
+                unreachable!();
+            }
+        }
+
+        let notify_fd = unsafe { CMSG_DATA(cmsgp).cast::<c_int>().read() };
+
+        unsafe {
+            handle_notifications(OwnedFd::from_raw_fd(notify_fd));
+        }
+    });
+
+    file_closer.except(&tx_fd);
 
     unsafe {
         command.pre_exec(move || {
@@ -198,15 +256,35 @@ pub fn add_noexec_filter(command: &mut Command) {
                 return Err(io::Error::last_os_error());
             }
 
-            if fork() != 0 {
-                close(notify_fd);
-                return Ok(());
+            let mut data = [0u8; 1];
+            let mut iov = iovec {
+                iov_base: &mut data as *mut [u8; 1] as *mut c_void,
+                iov_len: 1,
+            };
+
+            let mut msg: msghdr = zeroed();
+            msg.msg_name = ptr::null_mut();
+            msg.msg_namelen = 0;
+            msg.msg_iov = &mut iov;
+            msg.msg_iovlen = 1;
+
+            let mut control: SingleRightAnciliaryData = zeroed();
+            msg.msg_control = &mut control as *mut _ as *mut _;
+            // FIXME stacked borrows violation?
+            msg.msg_controllen = control.buf.len();
+            let cmsgp = CMSG_FIRSTHDR(&mut msg);
+            (*cmsgp).cmsg_level = SOL_SOCKET;
+            (*cmsgp).cmsg_type = SCM_RIGHTS;
+            (*cmsgp).cmsg_len = CMSG_LEN(size_of::<c_int>() as u32) as usize;
+            ptr::write(CMSG_DATA(cmsgp).cast::<c_int>(), notify_fd);
+
+            if sendmsg(tx_fd.as_raw_fd(), &msg, 0) == -1 {
+                return Err(io::Error::last_os_error());
             }
 
-            handle_notifications(
-                notify_fd,
-                notify_allocs.take().unwrap_or_else(|| libc::abort()),
-            );
+            close(notify_fd);
+
+            Ok(())
         });
     }
 }
