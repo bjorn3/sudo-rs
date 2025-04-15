@@ -52,6 +52,7 @@ mod noexec {
     #[cfg(not(target_os = "linux"))]
     compile_error!("sudo_noexec shouldn't be compiled for non-Linux systems");
 
+    use std::alloc::{handle_alloc_error, GlobalAlloc, Layout};
     use std::mem::offset_of;
     use std::os::unix::process::CommandExt;
     use std::process::Command;
@@ -59,7 +60,7 @@ mod noexec {
     use std::{cmp, io};
 
     use libc::{
-        c_int, c_uint, c_ulong, calloc, close, fork, ioctl, prctl, seccomp_data, seccomp_notif,
+        c_int, c_uint, c_ulong, close, fork, ioctl, prctl, seccomp_data, seccomp_notif,
         seccomp_notif_resp, seccomp_notif_sizes, sock_filter, sock_fprog, syscall, SYS_execve,
         SYS_execveat, SYS_seccomp, __errno_location, BPF_ABS, BPF_JEQ, BPF_JMP, BPF_JUMP, BPF_K,
         BPF_LD, BPF_RET, BPF_STMT, EACCES, ENOENT, PR_SET_NO_NEW_PRIVS,
@@ -84,6 +85,27 @@ mod noexec {
     unsafe impl Send for NotifyAllocs {}
     unsafe impl Sync for NotifyAllocs {}
 
+    fn alloc_dynamic<T>(runtime_size: u16) -> (*mut T, usize) {
+        const {
+            assert!(size_of::<T>() > 0);
+        }
+
+        let layout = Layout::from_size_align(
+            cmp::max(runtime_size.into(), size_of::<T>()),
+            align_of::<seccomp_notif>(),
+        )
+        .unwrap();
+
+        // SAFETY: We assert that T is bigger than 0 bytes and as such the computed layout is also
+        // bigger.
+        let ptr = unsafe { std::alloc::System.alloc_zeroed(layout).cast::<T>() };
+        if ptr.is_null() {
+            handle_alloc_error(layout);
+        }
+
+        (ptr, layout.size())
+    }
+
     fn alloc_notify_allocs() -> NotifyAllocs {
         unsafe {
             let mut sizes = seccomp_notif_sizes {
@@ -92,29 +114,18 @@ mod noexec {
                 seccomp_data: 0,
             };
             if seccomp(SECCOMP_GET_NOTIF_SIZES, 0, &mut sizes) == -1 {
-                libc::abort();
+                panic!(
+                    "failed to get sizes for seccomp unotify data structures: {}",
+                    io::Error::last_os_error(),
+                );
             }
 
-            let req = calloc(
-                1,
-                cmp::max(sizes.seccomp_notif.into(), size_of::<seccomp_notif>()),
-            )
-            .cast::<seccomp_notif>();
-            let resp = calloc(
-                1,
-                cmp::max(
-                    sizes.seccomp_notif_resp.into(),
-                    size_of::<seccomp_notif_resp>(),
-                ),
-            )
-            .cast::<seccomp_notif_resp>();
-            if req.is_null() || resp.is_null() {
-                libc::abort();
-            }
+            let (req, req_size) = alloc_dynamic::<seccomp_notif>(sizes.seccomp_notif);
+            let (resp, _) = alloc_dynamic::<seccomp_notif_resp>(sizes.seccomp_notif_resp);
 
             NotifyAllocs {
                 req,
-                req_size: sizes.seccomp_notif.into(),
+                req_size,
                 resp,
             }
         }
