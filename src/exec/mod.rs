@@ -52,19 +52,19 @@ mod noexec {
     #[cfg(not(target_os = "linux"))]
     compile_error!("sudo_noexec shouldn't be compiled for non-Linux systems");
 
-    use std::cmp;
     use std::mem::offset_of;
     use std::os::unix::process::CommandExt;
     use std::process::Command;
     use std::ptr::addr_of;
+    use std::{cmp, io};
 
     use libc::{
         c_int, c_uint, c_ulong, calloc, close, fork, ioctl, prctl, seccomp_data, seccomp_notif,
         seccomp_notif_resp, seccomp_notif_sizes, sock_filter, sock_fprog, syscall, SYS_execve,
-        SYS_execveat, SYS_seccomp, BPF_ABS, BPF_JEQ, BPF_JMP, BPF_JUMP, BPF_K, BPF_LD, BPF_RET,
-        BPF_STMT, PR_SET_NO_NEW_PRIVS, SECCOMP_FILTER_FLAG_NEW_LISTENER,
-        SECCOMP_FILTER_FLAG_WAIT_KILLABLE_RECV, SECCOMP_GET_NOTIF_SIZES, SECCOMP_RET_ALLOW,
-        SECCOMP_SET_MODE_FILTER, SECCOMP_USER_NOTIF_FLAG_CONTINUE,
+        SYS_execveat, SYS_seccomp, __errno_location, BPF_ABS, BPF_JEQ, BPF_JMP, BPF_JUMP, BPF_K,
+        BPF_LD, BPF_RET, BPF_STMT, EACCES, ENOENT, PR_SET_NO_NEW_PRIVS,
+        SECCOMP_FILTER_FLAG_NEW_LISTENER, SECCOMP_GET_NOTIF_SIZES, SECCOMP_RET_ALLOW,
+        SECCOMP_SET_MODE_FILTER,
     };
 
     const SECCOMP_RET_USER_NOTIF: c_uint = 0x7fc00000;
@@ -77,6 +77,7 @@ mod noexec {
 
     struct NotifyAllocs {
         req: *mut seccomp_notif,
+        req_size: usize,
         resp: *mut seccomp_notif_resp,
     }
 
@@ -111,36 +112,45 @@ mod noexec {
                 libc::abort();
             }
 
-            NotifyAllocs { req, resp }
+            NotifyAllocs {
+                req,
+                req_size: sizes.seccomp_notif.into(),
+                resp,
+            }
         }
     }
 
     unsafe fn handle_notifications(
         notify_fd: c_int,
-        NotifyAllocs { req, resp }: NotifyAllocs,
+        NotifyAllocs {
+            req,
+            req_size,
+            resp,
+        }: NotifyAllocs,
     ) -> ! {
         unsafe {
-            // FIXME handle error
-            if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_RECV, req) == -1 {
-                libc::abort();
+            loop {
+                std::ptr::write_bytes(req, 0, req_size);
+
+                if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_RECV, req) == -1 {
+                    if *__errno_location() == ENOENT {
+                        continue; // Syscall was interrupted
+                    }
+                    libc::abort();
+                }
+
+                (*resp).id = (*req).id;
+                (*resp).val = 0;
+                (*resp).error = -EACCES;
+                (*resp).flags = 0;
+
+                if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_SEND, resp) == -1 {
+                    if *__errno_location() == ENOENT {
+                        continue; // Syscall was interrupted
+                    }
+                    libc::abort();
+                }
             }
-
-            (*resp).id = (*req).id;
-            (*resp).val = 0;
-            (*resp).error = 0;
-            (*resp).flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE as u32;
-
-            // FIXME handle error
-            if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_SEND, resp) == -1 {
-                libc::abort();
-            }
-
-            // Exit the helper process after the target process has been
-            // exec'ed. This will close the seccomp_unotify fd after which
-            // all SECCOMP_RET_USER_NOTIF will result in ENOSYS
-
-            // FIXME return EACCESS rather than ENOSYS.
-            libc::exit(0);
         }
     }
 
@@ -170,8 +180,8 @@ mod noexec {
                 // SAFETY: Trivially safe as it doesn't touch any memory.
                 // SECCOMP_SET_MODE_FILTER will fail unless the process has
                 // CAP_SYS_ADMIN or the no_new_privs bit is set.
-                if prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
-                    return Err(todo!());
+                if prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1 {
+                    return Err(io::Error::last_os_error());
                 }
 
                 // While the man page warns againt using seccomp_unotify as security
@@ -182,8 +192,7 @@ mod noexec {
                 // SAFETY: Passes a valid sock_fprog as argument.
                 let notify_fd = seccomp(
                     SECCOMP_SET_MODE_FILTER,
-                    (SECCOMP_FILTER_FLAG_NEW_LISTENER | SECCOMP_FILTER_FLAG_WAIT_KILLABLE_RECV)
-                        as _,
+                    SECCOMP_FILTER_FLAG_NEW_LISTENER as _,
                     addr_of!(exec_fprog).cast_mut(),
                 );
                 if fork() != 0 {
