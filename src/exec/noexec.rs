@@ -13,7 +13,7 @@ use libc::{
     SYS_execveat, SYS_seccomp, __errno_location, BPF_ABS, BPF_JEQ, BPF_JMP, BPF_JUMP, BPF_K,
     BPF_LD, BPF_RET, BPF_STMT, EACCES, ENOENT, PR_SET_NO_NEW_PRIVS,
     SECCOMP_FILTER_FLAG_NEW_LISTENER, SECCOMP_GET_NOTIF_SIZES, SECCOMP_RET_ALLOW,
-    SECCOMP_SET_MODE_FILTER,
+    SECCOMP_SET_MODE_FILTER, SECCOMP_USER_NOTIF_FLAG_CONTINUE,
 };
 
 const SECCOMP_RET_USER_NOTIF: c_uint = 0x7fc00000;
@@ -87,6 +87,39 @@ unsafe fn handle_notifications(
     }: NotifyAllocs,
 ) -> ! {
     unsafe {
+        loop {
+            // SECCOMP_IOCTL_NOTIF_RECV expects the target struct to be zeroed
+            // SAFETY: req is at least req_size bytes big
+            std::ptr::write_bytes(req.cast::<u8>(), 0, req_size);
+
+            // SAFETY: A valid pointer to a seccomp_notify is passed in
+            if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_RECV, req) == -1 {
+                // SAFETY: Trivial
+                if *__errno_location() == ENOENT {
+                    continue; // Syscall was interrupted
+                }
+                // SAFETY: Not actually unsafe
+                libc::abort();
+            }
+
+            // Allow the first execve call as this is sudo itself starting the target executable.
+            // SAFETY: resp is a valid pointer to a seccomp_notify_resp
+            (*resp).id = (*req).id;
+            (*resp).val = 0;
+            (*resp).error = 0;
+            (*resp).flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE as _;
+
+            if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_SEND, resp) == -1 {
+                // SAFETY: Trivial
+                if *__errno_location() == ENOENT {
+                    continue; // Syscall was interrupted
+                }
+                // SAFETY: Not actually unsafe
+                libc::abort();
+            }
+            break;
+        }
+
         loop {
             // SECCOMP_IOCTL_NOTIF_RECV expects the target struct to be zeroed
             // SAFETY: req is at least req_size bytes big
