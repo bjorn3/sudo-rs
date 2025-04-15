@@ -155,13 +155,15 @@ pub fn add_noexec_filter(command: &mut Command) {
             // mechanism, the TOCTOU problem that is described there isn't
             // relevant here. We only SECCOMP_USER_NOTIF_FLAG_CONTINUE the first
             // execve which is done by ourself and thus trusted.
-            // FIXME handle error
             // SAFETY: Passes a valid sock_fprog as argument.
             let notify_fd = seccomp(
                 SECCOMP_SET_MODE_FILTER,
                 SECCOMP_FILTER_FLAG_NEW_LISTENER as _,
                 addr_of!(exec_fprog).cast_mut(),
             );
+            if notify_fd < 0 {
+                return Err(io::Error::last_os_error());
+            }
 
             if fork() != 0 {
                 close(notify_fd);
