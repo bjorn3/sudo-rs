@@ -107,27 +107,26 @@ mod noexec {
     }
 
     fn alloc_notify_allocs() -> NotifyAllocs {
-        unsafe {
-            let mut sizes = seccomp_notif_sizes {
-                seccomp_notif: 0,
-                seccomp_notif_resp: 0,
-                seccomp_data: 0,
-            };
-            if seccomp(SECCOMP_GET_NOTIF_SIZES, 0, &mut sizes) == -1 {
-                panic!(
-                    "failed to get sizes for seccomp unotify data structures: {}",
-                    io::Error::last_os_error(),
-                );
-            }
+        let mut sizes = seccomp_notif_sizes {
+            seccomp_notif: 0,
+            seccomp_notif_resp: 0,
+            seccomp_data: 0,
+        };
+        // SAFETY: A valid seccomp_notif_sizes pointer is passed in
+        if unsafe { seccomp(SECCOMP_GET_NOTIF_SIZES, 0, &mut sizes) } == -1 {
+            panic!(
+                "failed to get sizes for seccomp unotify data structures: {}",
+                io::Error::last_os_error(),
+            );
+        }
 
-            let (req, req_size) = alloc_dynamic::<seccomp_notif>(sizes.seccomp_notif);
-            let (resp, _) = alloc_dynamic::<seccomp_notif_resp>(sizes.seccomp_notif_resp);
+        let (req, req_size) = alloc_dynamic::<seccomp_notif>(sizes.seccomp_notif);
+        let (resp, _) = alloc_dynamic::<seccomp_notif_resp>(sizes.seccomp_notif_resp);
 
-            NotifyAllocs {
-                req,
-                req_size,
-                resp,
-            }
+        NotifyAllocs {
+            req,
+            req_size,
+            resp,
         }
     }
 
@@ -141,24 +140,33 @@ mod noexec {
     ) -> ! {
         unsafe {
             loop {
-                std::ptr::write_bytes(req, 0, req_size);
+                // SECCOMP_IOCTL_NOTIF_RECV expects the target struct to be zeroed
+                // SAFETY: req is at least req_size bytes big
+                std::ptr::write_bytes(req.cast::<u8>(), 0, req_size);
 
+                // SAFETY: A valid pointer to a seccomp_notify is passed in
                 if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_RECV, req) == -1 {
+                    // SAFETY: Trivial
                     if *__errno_location() == ENOENT {
                         continue; // Syscall was interrupted
                     }
+                    // SAFETY: Not actually unsafe
                     libc::abort();
                 }
 
+                // Set the error code for all syscalls we are notified about to EACCESS.
+                // SAFETY: resp is a valid pointer to a seccomp_notify_resp
                 (*resp).id = (*req).id;
                 (*resp).val = 0;
                 (*resp).error = -EACCES;
                 (*resp).flags = 0;
 
                 if ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_SEND, resp) == -1 {
+                    // SAFETY: Trivial
                     if *__errno_location() == ENOENT {
                         continue; // Syscall was interrupted
                     }
+                    // SAFETY: Not actually unsafe
                     libc::abort();
                 }
             }
@@ -206,15 +214,16 @@ mod noexec {
                     SECCOMP_FILTER_FLAG_NEW_LISTENER as _,
                     addr_of!(exec_fprog).cast_mut(),
                 );
+
                 if fork() != 0 {
                     close(notify_fd);
                     return Ok(());
                 }
 
-                let Some(notify_allocs) = notify_allocs.take() else {
-                    libc::abort();
-                };
-                handle_notifications(notify_fd, notify_allocs);
+                handle_notifications(
+                    notify_fd,
+                    notify_allocs.take().unwrap_or_else(|| libc::abort()),
+                );
             });
         }
     }
