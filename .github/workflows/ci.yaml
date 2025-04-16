@@ -250,8 +250,8 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Install rust 1.70
-        run: rustup override set 1.70
+      - name: Install rust 1.75
+        run: rustup override set 1.75
 
       - name: Install dependencies
         run: |

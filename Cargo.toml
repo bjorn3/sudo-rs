@@ -9,7 +9,7 @@ homepage = "https://github.com/trifectatechfoundation/sudo-rs"
 publish = true
 categories = ["command-line-interface"]
 
-rust-version = "1.70"
+rust-version = "1.75"
 
 default-run = "sudo"
 
