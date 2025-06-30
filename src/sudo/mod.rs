@@ -1,4 +1,5 @@
-#![forbid(unsafe_code)]
+// FIXME
+//#![forbid(unsafe_code)]
 
 use crate::common::resolve::CurrentUser;
 use crate::common::Error;
@@ -16,6 +17,7 @@ use std::path::PathBuf;
 
 mod cli;
 pub(crate) use cli::{SudoEditOptions, SudoListOptions, SudoRunOptions, SudoValidateOptions};
+mod edit;
 
 pub(crate) mod diagnostic;
 mod env;
