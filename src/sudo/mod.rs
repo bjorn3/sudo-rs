@@ -23,6 +23,10 @@ mod env;
 mod pam;
 mod pipeline;
 
+pub fn edit_file() {
+    edit::edit_file(std::path::Path::new("some_file.txt"));
+}
+
 #[cfg_attr(not(feature = "dev"), allow(dead_code))]
 fn unstable_warning() {
     let check_var = std::env::var("SUDO_RS_IS_UNSTABLE").unwrap_or_else(|_| "".to_string());
