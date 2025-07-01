@@ -1,44 +1,71 @@
 use std::ffi::{c_char, CStr, OsStr};
+use std::fs::File;
 use std::io::{Read, Write};
+use std::net::Shutdown;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::process::Command;
-use std::{io, mem, process};
+use std::{io, process};
 
-use crate::system::interface::ProcessId;
+use crate::system::wait::{Wait, WaitError, WaitOptions};
 use crate::system::{fork, ForkResult};
 
-pub(super) fn edit_file(file: &Path) {
+pub(super) fn edit_file(path: &Path) {
     // Check symlinks and parent directory permissions
     // Take file lock
     // Check file is not device file
     // Read file
 
+    let editor: &OsStr = OsStr::new("/usr/bin/vim");
+    let mut file: File = File::open(path).unwrap();
+    let mut old_data = Vec::new();
+    file.read_to_end(&mut old_data).unwrap();
+
     // Create socket
+    let (mut parent_socket, child_socket) = UnixStream::pair().unwrap();
+
     // Spawn child
-    // Write to socket
-
-    // Read from socket
-    // If child has error, exit with non-zero exit code
-    // Write file
-}
-
-fn fork_child(editor: &OsStr, filename: &OsStr) -> (ProcessId, UnixStream) {
-    let (parent_socket, child_socket) = UnixStream::pair().unwrap();
-
     // SAFETY: There should be no other threads at this point.
     let ForkResult::Parent(command_pid) = unsafe { fork() }.unwrap() else {
-        handle_child(child_socket, editor, filename)
+        let filename = path.file_name().expect("file must have filename");
+        handle_child(child_socket, editor, filename, old_data)
     };
 
-    (command_pid, parent_socket)
+    // Read from socket
+    let data = read_len_prefix(&mut parent_socket).unwrap();
+    println_ignore_io_error!("{data:?}");
+
+    // If child has error, exit with non-zero exit code
+    let status = loop {
+        match command_pid.wait(WaitOptions::new()) {
+            Ok((_, status)) => break status,
+            Err(WaitError::Io(err)) if err.kind() == io::ErrorKind::Interrupted => {}
+            Err(err) => panic!("{err:?}"),
+        }
+    };
+    assert!(status.did_exit());
+    if status.term_signal().is_some() {
+        process::exit(2);
+    } else if let Some(code) = status.exit_status() {
+        if code != 0 {
+            process::exit(code);
+        }
+    } else {
+        process::exit(1);
+    }
+
+    // Check if modified since reading and if so ask user what to do
+
+    // Write file
 }
 
 // FIXME maybe use pipes once std::io::pipe has been stabilized long enough.
 // This would allow getting rid of write_len_prefix and read_len_prefix.
-fn handle_child(mut socket: UnixStream, editor: &OsStr, filename: &OsStr) -> ! {
+fn handle_child(mut socket: UnixStream, editor: &OsStr, filename: &OsStr, old_data: Vec<u8>) -> ! {
+    // FIXME remove temporary directory when an error happens
+
     // Drop root privileges.
     unsafe {
         libc::setuid(libc::getuid());
@@ -53,7 +80,7 @@ fn handle_child(mut socket: UnixStream, editor: &OsStr, filename: &OsStr) -> ! {
     // anyway.
     // FIXME maybe revisit this choice once libstd exposes some stable way to
     // get random numbers?
-    let mut template = *b"sudo-rsXXXXXX";
+    let mut template = *b"/tmp/sudo-rsXXXXXX\0";
     let tempdir_ptr = unsafe { libc::mkdtemp(template.as_mut_ptr().cast::<c_char>()) };
     if tempdir_ptr.is_null() {
         eprintln_ignore_io_error!(
@@ -66,9 +93,6 @@ fn handle_child(mut socket: UnixStream, editor: &OsStr, filename: &OsStr) -> ! {
         unsafe { CStr::from_ptr(tempdir_ptr) }.to_bytes(),
     ))
     .to_owned();
-    unsafe {
-        libc::free(tempdir_ptr.cast());
-    }
 
     // Create temp file
     let tempfile_path = tempdir.join(filename);
@@ -77,12 +101,6 @@ fn handle_child(mut socket: UnixStream, editor: &OsStr, filename: &OsStr) -> ! {
             "Failed to create temporary file {}: {e}",
             tempfile_path.display(),
         );
-        process::exit(1);
-    });
-
-    // Read from socket
-    let old_data = read_len_prefix(&mut socket).unwrap_or_else(|e| {
-        eprintln_ignore_io_error!("Failed to read data from parent: {e}");
         process::exit(1);
     });
 
@@ -99,13 +117,8 @@ fn handle_child(mut socket: UnixStream, editor: &OsStr, filename: &OsStr) -> ! {
     // Spawn editor
     let status = Command::new(editor).arg(&tempfile_path).status().unwrap();
     if !status.success() {
-        if let Some(signal) = status.signal() {
-            // If the editor aborted due to a signal, try to abort with the same signal.
-            unsafe {
-                libc::raise(signal);
-            }
-            // If the signal was not fatal for us, we continue executing. In that case we
-            // use exit code 1.
+        if status.signal().is_some() {
+            process::exit(2);
         }
         process::exit(status.code().unwrap_or(1));
     }
@@ -133,6 +146,8 @@ fn handle_child(mut socket: UnixStream, editor: &OsStr, filename: &OsStr) -> ! {
         process::exit(1);
     });
 
+    // Check if the data actually changed. If not abort the edit operation.
+
     // Write to socket
     write_len_prefix(&mut socket, &new_data).unwrap_or_else(|e| {
         eprintln_ignore_io_error!("Failed to write data to parent: {e}");
@@ -143,15 +158,13 @@ fn handle_child(mut socket: UnixStream, editor: &OsStr, filename: &OsStr) -> ! {
 }
 
 fn write_len_prefix(socket: &mut UnixStream, data: &[u8]) -> io::Result<()> {
-    socket.write_all(&usize::to_ne_bytes(data.len()))?;
     socket.write_all(data)?;
+    socket.shutdown(Shutdown::Both)?;
     Ok(())
 }
 
 fn read_len_prefix(socket: &mut UnixStream) -> io::Result<Vec<u8>> {
-    let mut len = [0u8; mem::size_of::<usize>()];
-    socket.read_exact(&mut len)?;
-    let mut old_data = vec![0; usize::from_ne_bytes(len)];
-    socket.read_exact(&mut old_data)?;
-    Ok(old_data)
+    let mut new_data = Vec::new();
+    socket.read_to_end(&mut new_data)?;
+    Ok(new_data)
 }
