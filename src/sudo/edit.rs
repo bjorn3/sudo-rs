@@ -1,6 +1,6 @@
 use std::ffi::{c_char, CStr, OsStr};
-use std::fs::File;
-use std::io::{Read, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Seek, Write};
 use std::net::Shutdown;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixStream;
@@ -9,17 +9,35 @@ use std::path::Path;
 use std::process::Command;
 use std::{io, process};
 
+use crate::system::file::FileLock;
 use crate::system::wait::{Wait, WaitError, WaitOptions};
 use crate::system::{fork, ForkResult};
 
 pub(super) fn edit_file(path: &Path) {
-    // Check symlinks and parent directory permissions
-    // Take file lock
-    // Check file is not device file
-    // Read file
+    // FIXME check symlinks and parent directory permissions
 
     let editor: &OsStr = OsStr::new("/usr/bin/vim");
-    let mut file: File = File::open(path).unwrap();
+
+    // Take file lock
+    let mut file: File = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .unwrap();
+
+    let lock = FileLock::exclusive(&file, true)
+        .map_err(|err| {
+            if err.kind() == io::ErrorKind::WouldBlock {
+                err //io_msg!(err, "{} busy, try again later", sudoers_path.display())
+            } else {
+                err
+            }
+        })
+        .unwrap();
+
+    // FIXME check file is not device file
+
+    // Read file
     let mut old_data = Vec::new();
     file.read_to_end(&mut old_data).unwrap();
 
@@ -56,9 +74,19 @@ pub(super) fn edit_file(path: &Path) {
         process::exit(1);
     }
 
-    // Check if modified since reading and if so ask user what to do
+    if data == old_data {
+        // FIXME print message
+        return;
+    }
+
+    // FIXME check if modified since reading and if so ask user what to do
 
     // Write file
+    file.rewind().unwrap();
+    file.write_all(&data).unwrap();
+    file.set_len(data.len().try_into().unwrap()).unwrap();
+
+    drop(lock);
 }
 
 // FIXME maybe use pipes once std::io::pipe has been stabilized long enough.
@@ -131,6 +159,8 @@ fn handle_child(mut socket: UnixStream, editor: &OsStr, filename: &OsStr, old_da
         );
         process::exit(1);
     });
+
+    // FIXME preserve temporary file if the original couldn't be written to
     std::fs::remove_file(&tempfile_path).unwrap_or_else(|e| {
         eprintln_ignore_io_error!(
             "Failed to remove temporary file {}: {e}",
@@ -147,6 +177,7 @@ fn handle_child(mut socket: UnixStream, editor: &OsStr, filename: &OsStr, old_da
     });
 
     // Check if the data actually changed. If not abort the edit operation.
+    // And if empty, ask the user what to do.
 
     // Write to socket
     write_len_prefix(&mut socket, &new_data).unwrap_or_else(|e| {
