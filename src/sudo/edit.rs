@@ -1,15 +1,14 @@
-use std::ffi::{c_char, CStr, OsStr};
+use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, Write};
 use std::net::Shutdown;
-use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::process::Command;
 use std::{io, process};
 
-use crate::system::file::FileLock;
+use crate::system::file::{create_temporary_dir, FileLock};
 use crate::system::wait::{Wait, WaitError, WaitOptions};
 use crate::system::{fork, ForkResult};
 
@@ -99,28 +98,10 @@ fn handle_child(mut socket: UnixStream, editor: &OsStr, filename: &OsStr, old_da
         libc::setuid(libc::getuid());
     }
 
-    // Create temp directory
-    // XXX(bjorn3): This uses mkdtemp from libc as rust doesn't have a random
-    // number generator as part of libstd, so we need unsafe either way on some
-    // of the platforms we support if we don't want to add another dependency.
-    // mkdtemp should be robust on all platforms we support. The only case I'm
-    // aware of where mkdtemp is broken is MinGW, but we don't support Windows
-    // anyway.
-    // FIXME maybe revisit this choice once libstd exposes some stable way to
-    // get random numbers?
-    let mut template = *b"/tmp/sudo-rsXXXXXX\0";
-    let tempdir_ptr = unsafe { libc::mkdtemp(template.as_mut_ptr().cast::<c_char>()) };
-    if tempdir_ptr.is_null() {
-        eprintln_ignore_io_error!(
-            "Failed to create temporary directory: {}",
-            io::Error::last_os_error()
-        );
+    let tempdir = create_temporary_dir().unwrap_or_else(|e| {
+        eprintln_ignore_io_error!("Failed to create temporary directory: {e}");
         process::exit(1);
-    }
-    let tempdir = Path::new(OsStr::from_bytes(
-        unsafe { CStr::from_ptr(tempdir_ptr) }.to_bytes(),
-    ))
-    .to_owned();
+    });
 
     // Create temp file
     let tempfile_path = tempdir.join(filename);
