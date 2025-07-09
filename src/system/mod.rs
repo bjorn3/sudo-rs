@@ -907,10 +907,7 @@ mod tests {
     fn test_get_user_and_group_by_id() {
         let fixed_users = &[
             (UserId::ROOT, "root"),
-            (
-                User::from_name(cstr!("daemon")).unwrap().unwrap().uid,
-                "daemon",
-            ),
+            (User::from_name(c"daemon").unwrap().unwrap().uid, "daemon"),
         ];
         for &(id, name) in fixed_users {
             let root = User::from_uid(id).unwrap().unwrap();
@@ -920,10 +917,7 @@ mod tests {
 
         let fixed_groups = &[
             (GroupId::new(0), ROOT_GROUP_NAME),
-            (
-                Group::from_name(cstr!("daemon")).unwrap().unwrap().gid,
-                "daemon",
-            ),
+            (Group::from_name(c"daemon").unwrap().unwrap().gid, "daemon"),
         ];
         for &(id, name) in fixed_groups {
             let root = Group::from_gid(id).unwrap().unwrap();
