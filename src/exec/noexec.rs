@@ -2,7 +2,7 @@
 
 use std::alloc::{handle_alloc_error, GlobalAlloc, Layout};
 use std::ffi::c_void;
-use std::mem::{align_of, size_of, zeroed};
+use std::mem::{self, align_of, size_of, zeroed};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
@@ -277,10 +277,7 @@ pub(crate) fn add_noexec_filter(command: &mut Command) -> SpawnNoexecHandler {
         command.pre_exec(move || {
             let tx_fd = tx_fd.take().unwrap();
 
-            // FIXME replace with offset_of!(seccomp_data, nr) once MSRV is bumped to 1.77
-            // SAFETY: seccomp_data can be safely zero-initialized.
-            let dummy: seccomp_data = zeroed();
-            let nr_offset = (&dummy.nr) as *const _ as usize - &dummy as *const _ as usize;
+            let nr_offset = mem::offset_of!(seccomp_data, nr);
 
             // SAFETY: libc unnecessarily marks these functions as unsafe
             let exec_filter: [sock_filter; 5] = [
