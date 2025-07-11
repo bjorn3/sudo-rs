@@ -2,8 +2,7 @@ use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, Write};
 use std::net::Shutdown;
-use std::os::unix::net::UnixStream;
-use std::os::unix::process::ExitStatusExt;
+use std::os::unix::{fs::OpenOptionsExt, net::UnixStream, process::ExitStatusExt};
 use std::path::Path;
 use std::process::Command;
 use std::{io, process};
@@ -21,6 +20,7 @@ pub(super) fn edit_file(path: &Path) {
     let mut file: File = OpenOptions::new()
         .read(true)
         .write(true)
+        .custom_flags(libc::O_NOFOLLOW)
         .open(path)
         .unwrap();
 
