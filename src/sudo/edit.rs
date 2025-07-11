@@ -12,8 +12,6 @@ use crate::system::wait::{Wait, WaitError, WaitOptions};
 use crate::system::{fork, ForkResult};
 
 pub(super) fn edit_file(path: &Path) {
-    // FIXME check symlinks and parent directory permissions
-
     let editor: &OsStr = OsStr::new("/usr/bin/vim");
 
     // Take file lock
