@@ -14,7 +14,7 @@ use crate::system::{fork, ForkResult};
 pub(super) fn edit_file(path: &Path) {
     let editor: &OsStr = OsStr::new("/usr/bin/vim");
 
-    // Take file lock
+    // Open file
     let mut file: File = OpenOptions::new()
         .read(true)
         .write(true)
@@ -23,11 +23,13 @@ pub(super) fn edit_file(path: &Path) {
         .open(path)
         .unwrap();
 
+    // Error for special files
     if !file.metadata().unwrap().is_file() {
         eprintln_ignore_io_error!("File {} is not a regular file", path.display());
         process::exit(1);
     }
 
+    // Take file lock
     let lock = FileLock::exclusive(&file, true)
         .map_err(|err| {
             if err.kind() == io::ErrorKind::WouldBlock {
@@ -48,11 +50,11 @@ pub(super) fn edit_file(path: &Path) {
     // Spawn child
     // SAFETY: There should be no other threads at this point.
     let ForkResult::Parent(command_pid) = unsafe { fork() }.unwrap() else {
-        let filename = path.file_name().expect("file must have filename");
-        handle_child(child_socket, editor, filename, old_data)
+        handle_child(child_socket, editor, path, old_data)
     };
 
     // Read from socket
+    // FIXME don't hang the parent process when the child process crashes
     let data = read_len_prefix(&mut parent_socket).unwrap();
 
     // If child has error, exit with non-zero exit code
@@ -102,8 +104,8 @@ impl Drop for TempDirDropGuard {
     }
 }
 
-fn handle_child(socket: UnixStream, editor: &OsStr, filename: &OsStr, old_data: Vec<u8>) -> ! {
-    match handle_child_inner(socket, editor, filename, old_data) {
+fn handle_child(socket: UnixStream, editor: &OsStr, path: &Path, old_data: Vec<u8>) -> ! {
+    match handle_child_inner(socket, editor, path, old_data) {
         Ok(()) => process::exit(0),
         Err(err) => {
             eprintln_ignore_io_error!("{err}");
@@ -117,7 +119,7 @@ fn handle_child(socket: UnixStream, editor: &OsStr, filename: &OsStr, old_data: 
 fn handle_child_inner(
     mut socket: UnixStream,
     editor: &OsStr,
-    filename: &OsStr,
+    path: &Path,
     old_data: Vec<u8>,
 ) -> Result<(), String> {
     // FIXME remove temporary directory when an error happens
@@ -132,7 +134,9 @@ fn handle_child_inner(
     );
 
     // Create temp file
-    let tempfile_path = tempdir.0.join(filename);
+    let tempfile_path = tempdir
+        .0
+        .join(path.file_name().expect("file must have filename"));
     let mut tempfile = std::fs::File::create_new(&tempfile_path).map_err(|e| {
         format!(
             "Failed to create temporary file {}: {e}",
@@ -178,6 +182,22 @@ fn handle_child_inner(
 
     // Check if the data actually changed. If not abort the edit operation.
     // And if empty, ask the user what to do.
+    if new_data == old_data {
+        process::exit(1);
+    }
+
+    if new_data.is_empty() {
+        match crate::visudo::ask_response(
+            format!("sudoedit: truncate {} to zero? (y/n) [n] ", path.display()).as_bytes(),
+            b"yn",
+        ) {
+            Ok(b'y') => {}
+            _ => {
+                eprintln_ignore_io_error!("Not overwriting {}", path.display());
+                process::exit(1)
+            }
+        }
+    }
 
     // Write to socket
     write_len_prefix(&mut socket, &new_data)
