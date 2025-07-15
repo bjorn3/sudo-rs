@@ -3,7 +3,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, Write};
 use std::net::Shutdown;
 use std::os::unix::{fs::OpenOptionsExt, net::UnixStream, process::ExitStatusExt};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{io, process};
 
@@ -50,7 +50,6 @@ pub(super) fn edit_file(path: &Path) {
 
     // Read from socket
     let data = read_len_prefix(&mut parent_socket).unwrap();
-    println_ignore_io_error!("{data:?}");
 
     // If child has error, exit with non-zero exit code
     let status = loop {
@@ -61,8 +60,8 @@ pub(super) fn edit_file(path: &Path) {
         }
     };
     assert!(status.did_exit());
-    if status.term_signal().is_some() {
-        process::exit(2);
+    if let Some(signal) = status.term_signal() {
+        process::exit(128 + signal);
     } else if let Some(code) = status.exit_status() {
         if code != 0 {
             process::exit(code);
@@ -86,9 +85,37 @@ pub(super) fn edit_file(path: &Path) {
     drop(lock);
 }
 
+struct TempDirDropGuard(PathBuf);
+
+impl Drop for TempDirDropGuard {
+    fn drop(&mut self) {
+        if let Err(e) = std::fs::remove_dir(&self.0) {
+            eprintln_ignore_io_error!(
+                "Failed to remove temporary directory {}: {e}",
+                self.0.display(),
+            );
+        };
+    }
+}
+
+fn handle_child(socket: UnixStream, editor: &OsStr, filename: &OsStr, old_data: Vec<u8>) -> ! {
+    match handle_child_inner(socket, editor, filename, old_data) {
+        Ok(()) => process::exit(0),
+        Err(err) => {
+            eprintln_ignore_io_error!("{err}");
+            process::exit(1);
+        }
+    }
+}
+
 // FIXME maybe use pipes once std::io::pipe has been stabilized long enough.
 // This would allow getting rid of write_len_prefix and read_len_prefix.
-fn handle_child(mut socket: UnixStream, editor: &OsStr, filename: &OsStr, old_data: Vec<u8>) -> ! {
+fn handle_child_inner(
+    mut socket: UnixStream,
+    editor: &OsStr,
+    filename: &OsStr,
+    old_data: Vec<u8>,
+) -> Result<(), String> {
     // FIXME remove temporary directory when an error happens
 
     // Drop root privileges.
@@ -96,73 +123,61 @@ fn handle_child(mut socket: UnixStream, editor: &OsStr, filename: &OsStr, old_da
         libc::setuid(libc::getuid());
     }
 
-    let tempdir = create_temporary_dir().unwrap_or_else(|e| {
-        eprintln_ignore_io_error!("Failed to create temporary directory: {e}");
-        process::exit(1);
-    });
+    let tempdir = TempDirDropGuard(
+        create_temporary_dir().map_err(|e| format!("Failed to create temporary directory: {e}"))?,
+    );
 
     // Create temp file
-    let tempfile_path = tempdir.join(filename);
-    let mut tempfile = std::fs::File::create_new(&tempfile_path).unwrap_or_else(|e| {
-        eprintln_ignore_io_error!(
+    let tempfile_path = tempdir.0.join(filename);
+    let mut tempfile = std::fs::File::create_new(&tempfile_path).map_err(|e| {
+        format!(
             "Failed to create temporary file {}: {e}",
             tempfile_path.display(),
-        );
-        process::exit(1);
-    });
+        )
+    })?;
 
     // Write to temp file
-    tempfile.write_all(&old_data).unwrap_or_else(|e| {
-        eprintln_ignore_io_error!(
+    tempfile.write_all(&old_data).map_err(|e| {
+        format!(
             "Failed to write to temporary file {}: {e}",
             tempfile_path.display(),
-        );
-        process::exit(1);
-    });
+        )
+    })?;
     drop(tempfile);
 
     // Spawn editor
     let status = Command::new(editor).arg(&tempfile_path).status().unwrap();
     if !status.success() {
-        if status.signal().is_some() {
-            process::exit(2);
+        drop(tempdir);
+
+        if let Some(signal) = status.signal() {
+            process::exit(128 + signal);
         }
         process::exit(status.code().unwrap_or(1));
     }
 
     // Read from temp file
-    let new_data = std::fs::read(&tempfile_path).unwrap_or_else(|e| {
-        eprintln_ignore_io_error!(
+    let new_data = std::fs::read(&tempfile_path).map_err(|e| {
+        format!(
             "Failed to read from temporary file {}: {e}",
             tempfile_path.display(),
-        );
-        process::exit(1);
-    });
+        )
+    })?;
 
     // FIXME preserve temporary file if the original couldn't be written to
-    std::fs::remove_file(&tempfile_path).unwrap_or_else(|e| {
-        eprintln_ignore_io_error!(
+    std::fs::remove_file(&tempfile_path).map_err(|e| {
+        format!(
             "Failed to remove temporary file {}: {e}",
             tempfile_path.display(),
-        );
-        process::exit(1);
-    });
-    std::fs::remove_dir(&tempdir).unwrap_or_else(|e| {
-        eprintln_ignore_io_error!(
-            "Failed to remove temporary directory {}: {e}",
-            tempdir.display(),
-        );
-        process::exit(1);
-    });
+        )
+    })?;
 
     // Check if the data actually changed. If not abort the edit operation.
     // And if empty, ask the user what to do.
 
     // Write to socket
-    write_len_prefix(&mut socket, &new_data).unwrap_or_else(|e| {
-        eprintln_ignore_io_error!("Failed to write data to parent: {e}");
-        process::exit(1);
-    });
+    write_len_prefix(&mut socket, &new_data)
+        .map_err(|e| format!("Failed to write data to parent: {e}"))?;
 
     process::exit(0);
 }
