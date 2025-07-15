@@ -18,6 +18,7 @@ pub(super) fn edit_file(path: &Path) {
     let mut file: File = OpenOptions::new()
         .read(true)
         .write(true)
+        .create(true)
         .custom_flags(libc::O_NOFOLLOW)
         .open(path)
         .unwrap();
