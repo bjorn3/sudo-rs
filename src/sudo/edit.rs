@@ -77,7 +77,7 @@ pub(super) fn edit_file(path: &Path) {
     }
 
     if data == old_data {
-        // FIXME print message
+        // File unchanged. No need to write it again.
         return;
     }
 
@@ -115,15 +115,12 @@ fn handle_child(socket: UnixStream, editor: &OsStr, path: &Path, old_data: Vec<u
 }
 
 // FIXME maybe use pipes once std::io::pipe has been stabilized long enough.
-// This would allow getting rid of write_len_prefix and read_len_prefix.
 fn handle_child_inner(
     mut socket: UnixStream,
     editor: &OsStr,
     path: &Path,
     old_data: Vec<u8>,
 ) -> Result<(), String> {
-    // FIXME remove temporary directory when an error happens
-
     // Drop root privileges.
     unsafe {
         libc::setuid(libc::getuid());
@@ -180,13 +177,8 @@ fn handle_child_inner(
         )
     })?;
 
-    // Check if the data actually changed. If not abort the edit operation.
-    // And if empty, ask the user what to do.
-    if new_data == old_data {
-        process::exit(1);
-    }
-
-    if new_data.is_empty() {
+    // If the file has been changed to be empty, ask the user what to do.
+    if new_data.is_empty() && new_data != old_data {
         match crate::visudo::ask_response(
             format!("sudoedit: truncate {} to zero? (y/n) [n] ", path.display()).as_bytes(),
             b"yn",
