@@ -22,6 +22,11 @@ pub(super) fn edit_file(path: &Path) {
         .open(path)
         .unwrap();
 
+    if !file.metadata().unwrap().is_file() {
+        eprintln_ignore_io_error!("File {} is not a regular file", path.display());
+        process::exit(1);
+    }
+
     let lock = FileLock::exclusive(&file, true)
         .map_err(|err| {
             if err.kind() == io::ErrorKind::WouldBlock {
@@ -31,8 +36,6 @@ pub(super) fn edit_file(path: &Path) {
             }
         })
         .unwrap();
-
-    // FIXME check file is not device file
 
     // Read file
     let mut old_data = Vec::new();
