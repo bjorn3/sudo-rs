@@ -52,9 +52,9 @@ pub(super) fn edit_file(path: &Path) {
     let ForkResult::Parent(command_pid) = unsafe { fork() }.unwrap() else {
         handle_child(child_socket, editor, path, old_data)
     };
+    drop(child_socket);
 
     // Read from socket
-    // FIXME don't hang the parent process when the child process crashes
     let data = read_len_prefix(&mut parent_socket).unwrap();
 
     // If child has error, exit with non-zero exit code
