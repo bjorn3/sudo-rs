@@ -16,7 +16,6 @@ mod sudo;
 mod visudo;
 
 pub use su::main as su_main;
-pub use sudo::edit_file;
 pub use sudo::main as sudo_main;
 pub use visudo::main as visudo_main;
 

@@ -1,3 +1,3 @@
 fn main() {
-    sudo_rs::edit_file();
+    sudo_rs::sudo_main();
 }

@@ -1,4 +1,3 @@
-use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, Write};
 use std::net::Shutdown;
@@ -7,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{io, process};
 
+use crate::exec::ExitReason;
 use crate::system::file::{create_temporary_dir, FileLock};
 use crate::system::wait::{Wait, WaitError, WaitOptions};
 use crate::system::{fork, ForkResult};
@@ -26,9 +26,7 @@ struct ChildFileInfo<'a> {
     new_data_tx: UnixStream,
 }
 
-pub(super) fn edit_file(paths: &[&Path]) {
-    let editor: &OsStr = OsStr::new("/usr/bin/vim");
-
+pub(super) fn edit_files(editor: &Path, paths: &[&Path]) -> io::Result<ExitReason> {
     let mut files = vec![];
     let mut child_files = vec![];
     for path in paths {
@@ -104,13 +102,13 @@ pub(super) fn edit_file(paths: &[&Path]) {
     };
     assert!(status.did_exit());
     if let Some(signal) = status.term_signal() {
-        process::exit(128 + signal);
+        return Ok(ExitReason::Signal(signal));
     } else if let Some(code) = status.exit_status() {
         if code != 0 {
-            process::exit(code);
+            return Ok(ExitReason::Code(code));
         }
     } else {
-        process::exit(1);
+        return Ok(ExitReason::Code(1));
     }
 
     for mut file in files {
@@ -129,6 +127,8 @@ pub(super) fn edit_file(paths: &[&Path]) {
 
         drop(file.lock);
     }
+
+    Ok(ExitReason::Code(0))
 }
 
 struct TempDirDropGuard(PathBuf);
@@ -144,7 +144,7 @@ impl Drop for TempDirDropGuard {
     }
 }
 
-fn handle_child(editor: &OsStr, file: Vec<ChildFileInfo<'_>>) -> ! {
+fn handle_child(editor: &Path, file: Vec<ChildFileInfo<'_>>) -> ! {
     match handle_child_inner(editor, file) {
         Ok(()) => process::exit(0),
         Err(err) => {
@@ -155,7 +155,7 @@ fn handle_child(editor: &OsStr, file: Vec<ChildFileInfo<'_>>) -> ! {
 }
 
 // FIXME maybe use pipes once std::io::pipe has been stabilized long enough.
-fn handle_child_inner(editor: &OsStr, mut files: Vec<ChildFileInfo<'_>>) -> Result<(), String> {
+fn handle_child_inner(editor: &Path, mut files: Vec<ChildFileInfo<'_>>) -> Result<(), String> {
     // Drop root privileges.
     unsafe {
         libc::setuid(libc::getuid());
