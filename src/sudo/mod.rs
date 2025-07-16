@@ -1,5 +1,4 @@
-// FIXME
-//#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
 use crate::common::resolve::CurrentUser;
 use crate::common::Error;

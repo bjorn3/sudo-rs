@@ -1,3 +1,5 @@
+#![allow(unsafe_code)]
+
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, Write};
 use std::net::Shutdown;
