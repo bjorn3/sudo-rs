@@ -13,7 +13,8 @@ use crate::system::file::{create_temporary_dir, FileLock};
 use crate::system::wait::{Wait, WaitError, WaitOptions};
 use crate::system::{fork, ForkResult};
 
-struct ParentFileInfo {
+struct ParentFileInfo<'a> {
+    path: &'a Path,
     file: File,
     lock: FileLock,
     old_data: Vec<u8>,
@@ -39,33 +40,40 @@ pub(super) fn edit_files(editor: &Path, paths: &[&Path]) -> io::Result<ExitReaso
             .create(true)
             .custom_flags(libc::O_NOFOLLOW)
             .open(path)
-            .unwrap();
+            .map_err(|e| {
+                io::Error::new(e.kind(), format!("Failed to open {}: {e}", path.display()))
+            })?;
 
         // Error for special files
-        if !file.metadata().unwrap().is_file() {
-            eprintln_ignore_io_error!("File {} is not a regular file", path.display());
-            process::exit(1);
+        let metadata = file.metadata().map_err(|e| {
+            io::Error::new(
+                e.kind(),
+                format!("Failed to read metadata for {}: {e}", path.display()),
+            )
+        })?;
+        if !metadata.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("File {} is not a regular file", path.display()),
+            ));
         }
 
         // Take file lock
-        let lock = FileLock::exclusive(&file, true)
-            .map_err(|err| {
-                if err.kind() == io::ErrorKind::WouldBlock {
-                    err //io_msg!(err, "{} busy, try again later", sudoers_path.display())
-                } else {
-                    err
-                }
-            })
-            .unwrap();
+        let lock = FileLock::exclusive(&file, true).map_err(|e| {
+            io::Error::new(e.kind(), format!("Failed to lock {}: {e}", path.display()))
+        })?;
 
         // Read file
         let mut old_data = Vec::new();
-        file.read_to_end(&mut old_data).unwrap();
+        file.read_to_end(&mut old_data).map_err(|e| {
+            io::Error::new(e.kind(), format!("Failed to read {}: {e}", path.display()))
+        })?;
 
         // Create socket
         let (parent_socket, child_socket) = UnixStream::pair().unwrap();
 
         files.push(ParentFileInfo {
+            path,
             file,
             lock,
             old_data: old_data.clone(),
@@ -91,7 +99,10 @@ pub(super) fn edit_files(editor: &Path, paths: &[&Path]) -> io::Result<ExitReaso
 
     for file in &mut files {
         // Read from socket
-        file.new_data = Some(read_stream(&mut file.new_data_rx).unwrap());
+        file.new_data =
+            Some(read_stream(&mut file.new_data_rx).map_err(|e| {
+                io::Error::new(e.kind(), format!("Failed to read from socket: {e}"))
+            })?);
     }
 
     // If child has error, exit with non-zero exit code
@@ -114,7 +125,7 @@ pub(super) fn edit_files(editor: &Path, paths: &[&Path]) -> io::Result<ExitReaso
     }
 
     for mut file in files {
-        let data = file.new_data.unwrap();
+        let data = file.new_data.expect("filled in above");
         if data == file.old_data {
             // File unchanged. No need to write it again.
             continue;
@@ -123,9 +134,21 @@ pub(super) fn edit_files(editor: &Path, paths: &[&Path]) -> io::Result<ExitReaso
         // FIXME check if modified since reading and if so ask user what to do
 
         // Write file
-        file.file.rewind().unwrap();
-        file.file.write_all(&data).unwrap();
-        file.file.set_len(data.len().try_into().unwrap()).unwrap();
+        (move || {
+            file.file.rewind()?;
+            file.file.write_all(&data)?;
+            file.file.set_len(
+                data.len()
+                    .try_into()
+                    .expect("more than 18 exabyte of data???"),
+            )
+        })()
+        .map_err(|e| {
+            io::Error::new(
+                e.kind(),
+                format!("Failed to write {}: {e}", file.path.display()),
+            )
+        })?;
 
         drop(file.lock);
     }
@@ -196,10 +219,10 @@ fn handle_child_inner(editor: &Path, mut files: Vec<ChildFileInfo<'_>>) -> Resul
         .args(
             files
                 .iter()
-                .map(|file| file.tempfile_path.as_ref().unwrap()),
+                .map(|file| file.tempfile_path.as_ref().expect("filled in above")),
         )
         .status()
-        .unwrap();
+        .map_err(|e| format!("Failed to run editor {}: {e}", editor.display()))?;
     if !status.success() {
         drop(tempdir);
 
@@ -210,7 +233,7 @@ fn handle_child_inner(editor: &Path, mut files: Vec<ChildFileInfo<'_>>) -> Resul
     }
 
     for mut file in files {
-        let tempfile_path = file.tempfile_path.as_ref().unwrap();
+        let tempfile_path = file.tempfile_path.as_ref().expect("filled in above");
 
         // Read from temp file
         let new_data = std::fs::read(&tempfile_path).map_err(|e| {
