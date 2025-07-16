@@ -24,7 +24,10 @@ mod pam;
 mod pipeline;
 
 pub fn edit_file() {
-    edit::edit_file(std::path::Path::new("some_file.txt"));
+    edit::edit_file(&[
+        std::path::Path::new("some_file.txt"),
+        std::path::Path::new("some_other_file.txt"),
+    ]);
 }
 
 #[cfg_attr(not(feature = "dev"), allow(dead_code))]
