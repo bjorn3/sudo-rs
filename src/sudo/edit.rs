@@ -157,6 +157,7 @@ fn handle_child(editor: &Path, file: Vec<ChildFileInfo<'_>>) -> ! {
 // FIXME maybe use pipes once std::io::pipe has been stabilized long enough.
 fn handle_child_inner(editor: &Path, mut files: Vec<ChildFileInfo<'_>>) -> Result<(), String> {
     // Drop root privileges.
+    // SAFETY: setuid does not change any memory and only affects OS state.
     unsafe {
         libc::setuid(libc::getuid());
     }
