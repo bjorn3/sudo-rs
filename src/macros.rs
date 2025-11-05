@@ -1,6 +1,7 @@
 // the `std::print` macros panic on any IO error. these are non-panicking alternatives
 macro_rules! println_ignore_io_error {
     ($($tt:tt)*) => {{
+        // FIXME translate callers
         use std::io::Write;
         let _ = writeln!(std::io::stdout(), $($tt)*);
     }}
@@ -8,6 +9,7 @@ macro_rules! println_ignore_io_error {
 
 macro_rules! eprintln_ignore_io_error {
     ($($tt:tt)*) => {{
+        // FIXME translate callers
         use std::io::Write;
         let _ = writeln!(std::io::stderr(), $($tt)*);
     }}

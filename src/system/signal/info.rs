@@ -38,6 +38,7 @@ impl SignalInfo {
 
 impl fmt::Display for SignalInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // FIXME translate
         write!(
             f,
             "{} {} from ",

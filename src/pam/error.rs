@@ -199,6 +199,7 @@ impl From<Utf8Error> for PamError {
 
 impl fmt::Display for PamError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // FIXME translate
         match self {
             PamError::UnexpectedNulByte(_) => write!(f, "Unexpected nul byte in input"),
             PamError::Utf8Error(_) => write!(f, "Could not read input data as UTF-8 string"),

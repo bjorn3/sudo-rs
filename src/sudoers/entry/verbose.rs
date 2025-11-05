@@ -11,6 +11,7 @@ pub struct Verbose<'a>(pub Entry<'a>);
 
 impl fmt::Display for Verbose<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // FIXME translate?
         let Self(Entry {
             run_as,
             cmd_specs,
