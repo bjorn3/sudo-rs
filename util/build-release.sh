@@ -14,16 +14,31 @@ rm -rf "$TARGET_DIR_BASE"
 # Fetch the date from the changelog
 DATE=$(grep -m1 '^##' "$PROJECT_DIR"/CHANGELOG.md | grep -o '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}')
 
+source_dir="$TARGET_DIR_BASE/source"
+mkdir -p "$source_dir" "$source_dir/docs"
+
+# Necessary for building executables
+cp -r "$PROJECT_DIR/Cargo.toml" "$PROJECT_DIR/Cargo.lock" "$PROJECT_DIR/src" "$source_dir/"
+# Documentation
+cp "$PROJECT_DIR/COPYRIGHT" "$PROJECT_DIR"/LICENSE-* "$PROJECT_DIR/README.md" "$PROJECT_DIR/CHANGELOG.md" "$PROJECT_DIR/SECURITY.md" "$source_dir/"
+cp -r "$PROJECT_DIR/docs/man" "$source_dir/docs/"
+# Necessary to regenerate bindings and man pages and rebuild a release
+cp -r "$PROJECT_DIR/Makefile" "$PROJECT_DIR/util" "$source_dir/"
+
+mkdir -p "$source_dir/.cargo"
+cd "$source_dir" && cargo vendor > "$source_dir/.cargo/config.toml"
+
 # Build binaries
 docker build --pull --tag "$BUILDER_IMAGE_TAG" --file "$SCRIPT_DIR/Dockerfile-release" "$SCRIPT_DIR"
-docker run --rm --user "$(id -u):$(id -g)" -v "$PROJECT_DIR:/build" -w "/build" "$BUILDER_IMAGE_TAG" cargo clean --locked
-docker run --rm --user "$(id -u):$(id -g)" -v "$PROJECT_DIR:/build" -w "/build" "$BUILDER_IMAGE_TAG" cargo build --locked --release --features pam-login,apparmor
+docker run --rm --user "$(id -u):$(id -g)" -v "$source_dir:/build" -w "/build" --network none "$BUILDER_IMAGE_TAG" cargo clean --frozen
+docker run --rm --user "$(id -u):$(id -g)" -v "$source_dir:/build" -w "/build" --network none "$BUILDER_IMAGE_TAG" cargo build --frozen --release --features pam-login,apparmor
 
 # Set target directories
 target_dir_sudo="$TARGET_DIR_BASE/sudo"
 target_dir_su="$TARGET_DIR_BASE/su"
 target_sudo="$TARGET_DIR_BASE/sudo-$SUDO_RS_VERSION.tar.gz"
 target_su="$TARGET_DIR_BASE/su-$SUDO_RS_VERSION.tar.gz"
+target_source="$TARGET_DIR_BASE/source-$SUDO_RS_VERSION.tar.gz"
 
 # Show what is happening
 set -x
@@ -33,20 +48,20 @@ umask u=rwx,g=rx,o=rx
 mkdir -p "$target_dir_sudo/bin"
 mkdir -p "$target_dir_sudo/share/man/man8"
 mkdir -p "$target_dir_sudo/share/man/man5"
-cp "$PROJECT_DIR/target/release/sudo" "$target_dir_sudo/bin/sudo"
-cp "$PROJECT_DIR/target/release/visudo" "$target_dir_sudo/bin/visudo"
+cp "$source_dir/target/release/sudo" "$target_dir_sudo/bin/sudo"
+cp "$source_dir/target/release/visudo" "$target_dir_sudo/bin/visudo"
 ln -s sudo "$target_dir_sudo/bin/sudoedit"
-cp "$PROJECT_DIR/docs/man/sudo.8.man" "$target_dir_sudo/share/man/man8/sudo.8"
-cp "$PROJECT_DIR/docs/man/visudo.8.man" "$target_dir_sudo/share/man/man8/visudo.8"
-cp "$PROJECT_DIR/docs/man/sudoers.5.man" "$target_dir_sudo/share/man/man5/sudoers.5"
+cp "$source_dir/docs/man/sudo.8.man" "$target_dir_sudo/share/man/man8/sudo.8"
+cp "$source_dir/docs/man/visudo.8.man" "$target_dir_sudo/share/man/man8/visudo.8"
+cp "$source_dir/docs/man/sudoers.5.man" "$target_dir_sudo/share/man/man5/sudoers.5"
 ln -s "sudo.8" "$target_dir_sudo/share/man/man8/sudoedit.8"
 mkdir -p "$target_dir_sudo/share/doc/sudo-rs/sudo"
-cp "$PROJECT_DIR/README.md" "$target_dir_sudo/share/doc/sudo-rs/sudo/README.md"
-cp "$PROJECT_DIR/CHANGELOG.md" "$target_dir_sudo/share/doc/sudo-rs/sudo/CHANGELOG.md"
-cp "$PROJECT_DIR/SECURITY.md" "$target_dir_sudo/share/doc/sudo-rs/sudo/SECURITY.md"
-cp "$PROJECT_DIR/COPYRIGHT" "$target_dir_sudo/share/doc/sudo-rs/sudo/COPYRIGHT"
-cp "$PROJECT_DIR/LICENSE-APACHE" "$target_dir_sudo/share/doc/sudo-rs/sudo/LICENSE-APACHE"
-cp "$PROJECT_DIR/LICENSE-MIT" "$target_dir_sudo/share/doc/sudo-rs/sudo/LICENSE-MIT"
+cp "$source_dir/README.md" "$target_dir_sudo/share/doc/sudo-rs/sudo/README.md"
+cp "$source_dir/CHANGELOG.md" "$target_dir_sudo/share/doc/sudo-rs/sudo/CHANGELOG.md"
+cp "$source_dir/SECURITY.md" "$target_dir_sudo/share/doc/sudo-rs/sudo/SECURITY.md"
+cp "$source_dir/COPYRIGHT" "$target_dir_sudo/share/doc/sudo-rs/sudo/COPYRIGHT"
+cp "$source_dir/LICENSE-APACHE" "$target_dir_sudo/share/doc/sudo-rs/sudo/LICENSE-APACHE"
+cp "$source_dir/LICENSE-MIT" "$target_dir_sudo/share/doc/sudo-rs/sudo/LICENSE-MIT"
 
 fakeroot -- bash <<EOF
 set -eo pipefail
@@ -60,15 +75,15 @@ EOF
 # Build su
 mkdir -p "$target_dir_su/bin"
 mkdir -p "$target_dir_su/share/man/man1"
-cp "$PROJECT_DIR/target/release/su" "$target_dir_su/bin/su"
-cp "$PROJECT_DIR/docs/man/su.1.man" "$target_dir_su/share/man/man1/su.1"
+cp "$source_dir/target/release/su" "$target_dir_su/bin/su"
+cp "$source_dir/docs/man/su.1.man" "$target_dir_su/share/man/man1/su.1"
 mkdir -p "$target_dir_su/share/doc/sudo-rs/su"
-cp "$PROJECT_DIR/README.md" "$target_dir_su/share/doc/sudo-rs/su/README.md"
-cp "$PROJECT_DIR/CHANGELOG.md" "$target_dir_su/share/doc/sudo-rs/su/CHANGELOG.md"
-cp "$PROJECT_DIR/SECURITY.md" "$target_dir_su/share/doc/sudo-rs/su/SECURITY.md"
-cp "$PROJECT_DIR/COPYRIGHT" "$target_dir_su/share/doc/sudo-rs/su/COPYRIGHT"
-cp "$PROJECT_DIR/LICENSE-APACHE" "$target_dir_su/share/doc/sudo-rs/su/LICENSE-APACHE"
-cp "$PROJECT_DIR/LICENSE-MIT" "$target_dir_su/share/doc/sudo-rs/su/LICENSE-MIT"
+cp "$source_dir/README.md" "$target_dir_su/share/doc/sudo-rs/su/README.md"
+cp "$source_dir/CHANGELOG.md" "$target_dir_su/share/doc/sudo-rs/su/CHANGELOG.md"
+cp "$source_dir/SECURITY.md" "$target_dir_su/share/doc/sudo-rs/su/SECURITY.md"
+cp "$source_dir/COPYRIGHT" "$target_dir_su/share/doc/sudo-rs/su/COPYRIGHT"
+cp "$source_dir/LICENSE-APACHE" "$target_dir_su/share/doc/sudo-rs/su/LICENSE-APACHE"
+cp "$source_dir/LICENSE-MIT" "$target_dir_su/share/doc/sudo-rs/su/LICENSE-MIT"
 
 fakeroot -- bash <<EOF
 set -eo pipefail
@@ -77,5 +92,8 @@ chown -R root:root "$target_dir_su"
 chmod +xs "$target_dir_su/bin/su"
 (cd $target_dir_su && tar --mtime="UTC $DATE 00:00:00" --sort=name --use-compress-program='gzip -9n' -cpvf "$target_su" *)
 EOF
+
+rm -rf "$source_dir/target"
+(cd "$source_dir" && tar --mtime="UTC $DATE 00:00:00" --sort=name --use-compress-program='gzip -9n' -cvf "$target_source" *)
 
 (cd $TARGET_DIR_BASE && sha256sum -b *-$SUDO_RS_VERSION.tar.gz > "$TARGET_DIR_BASE/SHA256SUMS")
