@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::process::exit;
 use std::time::Duration;
 
 use super::cli::{SudoRunOptions, SudoValidateOptions};
 use super::diagnostic;
+use crate::common::context::LaunchType;
 use crate::common::resolve::{AuthUser, CurrentUser};
 use crate::common::{Context, Error};
 use crate::exec::ExitReason;
@@ -73,7 +75,7 @@ fn judge(mut policy: Sudoers, context: &Context) -> Result<Judgement, Error> {
 pub fn run(mut cmd_opts: SudoRunOptions) -> Result<(), Error> {
     let mut policy = read_sudoers()?;
 
-    let user_requested_env_vars = std::mem::take(&mut cmd_opts.env_var_list);
+    let mut user_requested_env_vars = std::mem::take(&mut cmd_opts.env_var_list);
 
     let context = Context::from_run_opts(cmd_opts, &mut policy)?;
 
@@ -88,17 +90,20 @@ pub fn run(mut cmd_opts: SudoRunOptions) -> Result<(), Error> {
     // build environment
     let additional_env = pre_exec(&mut pam_context, &context.target_user.name)?;
 
-    let current_env = environment::system_environment();
-    let (checked_vars, trusted_vars) = if controls.trust_environment {
-        (vec![], user_requested_env_vars)
+    let current_env = if context.launch == LaunchType::Login && !controls.trust_environment {
+        HashMap::new()
     } else {
-        (user_requested_env_vars, vec![])
+        environment::system_environment()
     };
-
+    let trusted_vars = if controls.trust_environment {
+        std::mem::take(&mut user_requested_env_vars)
+    } else {
+        vec![]
+    };
     let mut target_env = environment::get_target_environment(
         current_env,
         additional_env,
-        checked_vars,
+        user_requested_env_vars,
         &context,
         &controls,
     )?;

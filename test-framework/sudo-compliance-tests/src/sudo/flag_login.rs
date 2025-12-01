@@ -1,6 +1,6 @@
 use sudo_test::{Command, Env, TextFile, User};
 
-use crate::{SUDOERS_ALL_ALL_NOPASSWD, USERNAME};
+use crate::{helpers, SUDOERS_ALL_ALL_NOPASSWD, USERNAME};
 
 macro_rules! assert_snapshot {
     ($($tt:tt)*) => {
@@ -239,4 +239,55 @@ fn shell_with_open_permissions_is_accepted() {
         .args(["-u", USERNAME, "-i"])
         .output(&env)
         .assert_success();
+}
+
+#[test]
+fn env_cleared() {
+    let name = "SHOULD_BE_PRESERVED";
+    let value = "42";
+    let env = Env(SUDOERS_ALL_ALL_NOPASSWD).build();
+
+    let stdout = Command::new("env")
+        .arg(format!("{name}={value}"))
+        .args(["sudo", "-i", "env"])
+        .output(&env)
+        .stdout();
+    let sudo_env = helpers::parse_env_output(&stdout);
+
+    assert_eq!(None, sudo_env.get(name).copied());
+}
+
+#[test]
+fn env_keep_respected() {
+    let name = "SHOULD_BE_PRESERVED";
+    let value = "42";
+    let env = Env([
+        SUDOERS_ALL_ALL_NOPASSWD,
+        &format!("Defaults env_keep = {name}"),
+    ])
+    .build();
+
+    let stdout = Command::new("env")
+        .arg(format!("{name}={value}"))
+        .args(["sudo", "-i", "env"])
+        .output(&env)
+        .stdout();
+    let sudo_env = helpers::parse_env_output(&stdout);
+
+    assert_eq!(Some(value), sudo_env.get(name).copied());
+}
+
+#[test]
+fn explicit_env_respected() {
+    let name = "SHOULD_BE_PRESERVED";
+    let value = "42";
+    let env = Env(SUDOERS_ALL_ALL_NOPASSWD).build();
+
+    let stdout = Command::new("env")
+        .args(["sudo", "-i", &format!("{name}={value}"), "env"])
+        .output(&env)
+        .stdout();
+    let sudo_env = helpers::parse_env_output(&stdout);
+
+    assert_eq!(Some(value), sudo_env.get(name).copied());
 }
