@@ -23,18 +23,13 @@ use self::signal::SignalNumber;
 
 pub(crate) mod audit;
 // generalized traits for when we want to hide implementations
-pub mod interface;
-
 pub mod file;
-
-pub mod time;
-
-pub mod timestamp;
-
+pub mod interface;
+pub mod pipe;
 pub mod signal;
-
 pub mod term;
-
+pub mod time;
+pub mod timestamp;
 pub mod wait;
 
 #[cfg(not(any(target_os = "freebsd", target_os = "linux")))]

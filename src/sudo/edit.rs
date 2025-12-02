@@ -2,8 +2,9 @@
 
 use std::fs::File;
 use std::io::{Read, Seek, Write};
-use std::net::Shutdown;
-use std::os::unix::{fs::OpenOptionsExt, net::UnixStream, process::ExitStatusExt};
+use std::os::fd::OwnedFd;
+use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{io, process};
@@ -12,6 +13,7 @@ use crate::common::SudoPath;
 use crate::exec::ExitReason;
 use crate::log::{user_error, user_info};
 use crate::system::file::{create_temporary_dir, FileLock};
+use crate::system::pipe::make_pipe;
 use crate::system::wait::{Wait, WaitError, WaitOptions};
 use crate::system::{fork, mark_fds_as_cloexec, ForkResult};
 
@@ -20,7 +22,7 @@ struct ParentFileInfo<'a> {
     file: File,
     lock: FileLock,
     old_data: Vec<u8>,
-    new_data_rx: UnixStream,
+    new_data_rx: Option<OwnedFd>,
     new_data: Option<Vec<u8>>,
 }
 
@@ -28,7 +30,7 @@ struct ChildFileInfo<'a> {
     path: &'a Path,
     old_data: Vec<u8>,
     tempfile_path: Option<PathBuf>,
-    new_data_tx: UnixStream,
+    new_data_tx: OwnedFd,
 }
 
 pub(super) fn edit_files(
@@ -64,14 +66,15 @@ pub(super) fn edit_files(
         })?;
 
         // Create socket
-        let (parent_socket, child_socket) = UnixStream::pair().unwrap();
+        let (parent_pipe, child_pipe) = make_pipe()
+            .map_err(|e| io::Error::new(e.kind(), format!("Failed to create pipe: {e}")))?;
 
         files.push(ParentFileInfo {
             path,
             file,
             lock,
             old_data: old_data.clone(),
-            new_data_rx: parent_socket,
+            new_data_rx: Some(parent_pipe),
             new_data: None,
         });
 
@@ -79,7 +82,7 @@ pub(super) fn edit_files(
             path,
             old_data,
             tempfile_path: None,
-            new_data_tx: child_socket,
+            new_data_tx: child_pipe,
         });
     }
 
@@ -94,7 +97,7 @@ pub(super) fn edit_files(
     for file in &mut files {
         // Read from socket
         file.new_data =
-            Some(read_stream(&mut file.new_data_rx).map_err(|e| {
+            Some(read_stream(file.new_data_rx.take().unwrap()).map_err(|e| {
                 io::Error::new(e.kind(), format!("Failed to read from socket: {e}"))
             })?);
     }
@@ -242,7 +245,7 @@ fn handle_child_inner(editor: &Path, mut files: Vec<ChildFileInfo<'_>>) -> Resul
         process::exit(status.code().unwrap_or(1));
     }
 
-    for mut file in files {
+    for file in files {
         let tempfile_path = file.tempfile_path.as_ref().expect("filled in above");
 
         // Read from temp file
@@ -276,7 +279,7 @@ fn handle_child_inner(editor: &Path, mut files: Vec<ChildFileInfo<'_>>) -> Resul
                     user_info!("not overwriting {}", file.path.display());
 
                     // Parent ignores write when new data matches old data
-                    write_stream(&mut file.new_data_tx, &file.old_data)
+                    write_stream(file.new_data_tx, &file.old_data)
                         .map_err(|e| format!("failed to write data to parent: {e}"))?;
 
                     continue;
@@ -285,21 +288,24 @@ fn handle_child_inner(editor: &Path, mut files: Vec<ChildFileInfo<'_>>) -> Resul
         }
 
         // Write to socket
-        write_stream(&mut file.new_data_tx, &new_data)
+        write_stream(file.new_data_tx, &new_data)
             .map_err(|e| format!("failed to write data to parent: {e}"))?;
     }
 
     process::exit(0);
 }
 
-fn write_stream(socket: &mut UnixStream, data: &[u8]) -> io::Result<()> {
-    socket.write_all(data)?;
-    socket.shutdown(Shutdown::Both)?;
+fn write_stream(pipe: OwnedFd, data: &[u8]) -> io::Result<()> {
+    let mut pipe = File::from(pipe);
+    pipe.write_all(data)?;
+    // Closing the pipe tells the parent process that we are done sending data for this file
+    drop(pipe);
     Ok(())
 }
 
-fn read_stream(socket: &mut UnixStream) -> io::Result<Vec<u8>> {
+fn read_stream(pipe: OwnedFd) -> io::Result<Vec<u8>> {
+    let mut pipe = File::from(pipe);
     let mut new_data = Vec::new();
-    socket.read_to_end(&mut new_data)?;
+    pipe.read_to_end(&mut new_data)?;
     Ok(new_data)
 }
