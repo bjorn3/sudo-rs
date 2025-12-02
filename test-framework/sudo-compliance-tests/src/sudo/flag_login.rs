@@ -291,3 +291,23 @@ fn explicit_env_respected() {
 
     assert_eq!(Some(value), sudo_env.get(name).copied());
 }
+
+#[test]
+fn sudo_env_overrides_env_keep() {
+    let env = Env([
+        SUDOERS_ALL_ALL_NOPASSWD,
+        &format!("Defaults env_keep = HOME"),
+    ])
+    .build();
+
+    let stdout = Command::new("env")
+        .arg(format!("HOME=/bogus"))
+        .args(["sudo", "-i", "env"])
+        .output(&env)
+        .stdout();
+    let sudo_env = helpers::parse_env_output(&stdout);
+
+    assert_eq!(Some("/root"), sudo_env.get("HOME").copied());
+}
+
+// FIXME tests for NOSETENV

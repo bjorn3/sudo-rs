@@ -90,6 +90,8 @@ pub fn run(mut cmd_opts: SudoRunOptions) -> Result<(), Error> {
     // build environment
     let additional_env = pre_exec(&mut pam_context, &context.target_user.name)?;
 
+    // https://github.com/sudo-project/sudo/blob/8e0b9a9d475a46d35b78bc6718d44a56a278553e/plugins/sudoers/env.c#L907
+    // FIXME for login make the PAM env override current env
     let current_env = if context.launch == LaunchType::Login && !controls.trust_environment {
         HashMap::new()
     } else {
