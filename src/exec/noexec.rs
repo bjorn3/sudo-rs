@@ -68,8 +68,9 @@ struct NotifyAllocs {
 /// Linux reserves the right to demand the memory for an object of type T
 /// to be over-allocated; this function ensures that happens.
 fn alloc_dynamic<T>(runtime_size: u16) -> (*mut T, usize) {
-    // FIXME put this in a const block once the MSRV has been bumped enough
-    assert!(size_of::<T>() > 0);
+    const {
+        assert!(size_of::<T>() > 0);
+    }
 
     let layout = Layout::from_size_align(
         cmp::max(runtime_size.into(), size_of::<T>()),
