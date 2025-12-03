@@ -1,7 +1,7 @@
 use std::{
     env::{self, consts::OS},
     fs::{self, File},
-    io::{ErrorKind, Seek, SeekFrom, Write},
+    io::{self, ErrorKind, Write},
     path::{Path, PathBuf},
     process::{self, Command as StdCommand, Stdio},
     str,
@@ -102,10 +102,12 @@ impl Container {
 
         let res = (|| -> Result<Child> {
             if let Some(stdin) = cmd.get_stdin() {
-                let mut temp_file = tempfile::tempfile()?;
-                temp_file.write_all(stdin.as_bytes())?;
-                temp_file.seek(SeekFrom::Start(0))?;
-                docker_exec.stdin(Stdio::from(temp_file));
+                let stdin = stdin.to_owned();
+                let (reader, mut writer) = io::pipe().unwrap();
+                std::thread::spawn(move || {
+                    writer.write_all(stdin.as_bytes()).unwrap();
+                });
+                docker_exec.stdin(reader);
             }
 
             Ok(Child::new(docker_exec.spawn()?))
@@ -302,16 +304,17 @@ fn repo_root() -> PathBuf {
 
 #[track_caller]
 fn run(cmd: &mut StdCommand, stdin: Option<&[u8]>) -> Output {
-    let res = (|| -> Result<Output> {
+    let res = std::thread::scope(|scope| -> Result<Output> {
         if let Some(stdin) = stdin {
-            let mut temp_file = tempfile::tempfile()?;
-            temp_file.write_all(stdin)?;
-            temp_file.seek(SeekFrom::Start(0))?;
-            cmd.stdin(Stdio::from(temp_file));
+            let (reader, mut writer) = io::pipe().unwrap();
+            scope.spawn(move || {
+                writer.write_all(stdin).unwrap();
+            });
+            cmd.stdin(reader);
         }
 
         cmd.output()?.try_into()
-    })();
+    });
     match res {
         Ok(output) => output,
         Err(err) => panic!("running `{cmd:?}` failed: {err}"),

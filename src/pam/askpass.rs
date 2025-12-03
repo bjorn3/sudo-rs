@@ -1,30 +1,15 @@
-use std::os::fd::{FromRawFd, OwnedFd};
+use std::io::{self, PipeReader, PipeWriter};
 use std::os::unix::process::CommandExt;
 use std::path::Path;
-use std::process::Command;
-use std::{io, process};
+use std::process::{self, Command};
 
-use libc::O_CLOEXEC;
-
-use crate::cutils::cerr;
 use crate::log::user_error;
 use crate::system::interface::ProcessId;
 use crate::system::{ForkResult, fork, mark_fds_as_cloexec};
 
-pub(super) fn spawn_askpass(program: &Path, prompt: &str) -> io::Result<(ProcessId, OwnedFd)> {
+pub(super) fn spawn_askpass(program: &Path, prompt: &str) -> io::Result<(ProcessId, PipeReader)> {
     // Create socket
-    let mut pipes = [-1, -1];
-    // SAFETY: A valid pointer to a mutable array of 2 fds is passed in.
-    unsafe {
-        cerr(libc::pipe2(pipes.as_mut_ptr(), O_CLOEXEC))?;
-    }
-    // SAFETY: pipe2 created two owned pipe fds
-    let (pipe_read, pipe_write) = unsafe {
-        (
-            OwnedFd::from_raw_fd(pipes[0]),
-            OwnedFd::from_raw_fd(pipes[1]),
-        )
-    };
+    let (pipe_read, pipe_write) = io::pipe()?;
 
     // Spawn child
     // SAFETY: There should be no other threads at this point.
@@ -37,7 +22,7 @@ pub(super) fn spawn_askpass(program: &Path, prompt: &str) -> io::Result<(Process
     Ok((command_pid, pipe_read))
 }
 
-fn handle_child(program: &Path, prompt: &str, stdout: OwnedFd) -> ! {
+fn handle_child(program: &Path, prompt: &str, stdout: PipeWriter) -> ! {
     // Drop root privileges.
     // SAFETY: setuid does not change any memory and only affects OS state.
     unsafe {

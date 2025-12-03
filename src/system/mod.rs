@@ -855,10 +855,7 @@ mod tests {
     use std::{
         ffi::c_char,
         io::{self, Read, Write},
-        os::{
-            fd::{AsFd, AsRawFd},
-            unix::net::UnixStream,
-        },
+        os::fd::{AsFd, AsRawFd},
         process::exit,
     };
 
@@ -994,7 +991,7 @@ mod tests {
     #[test]
     fn killpg_test() {
         // Create a socket so the children write to it if they aren't terminated by `killpg`.
-        let (mut rx, mut tx) = UnixStream::pair().unwrap();
+        let (mut rx, mut tx) = io::pipe().unwrap();
 
         let pid1 = unsafe {
             fork_for_test(|| {

@@ -2,9 +2,9 @@
 
 use std::ffi::OsString;
 use std::fs::File;
-use std::io::{Read, Seek, Write};
-use std::net::Shutdown;
-use std::os::unix::{fs::OpenOptionsExt, net::UnixStream, process::ExitStatusExt};
+use std::io::{PipeReader, PipeWriter, Read, Seek, Write};
+use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{io, process};
@@ -21,7 +21,7 @@ struct ParentFileInfo<'a> {
     file: File,
     lock: FileLock,
     old_data: Vec<u8>,
-    new_data_rx: UnixStream,
+    new_data_rx: Option<PipeReader>,
     new_data: Option<Vec<u8>>,
 }
 
@@ -29,7 +29,7 @@ struct ChildFileInfo<'a> {
     path: &'a Path,
     old_data: Vec<u8>,
     tempfile_path: Option<PathBuf>,
-    new_data_tx: UnixStream,
+    new_data_tx: PipeWriter,
 }
 
 pub(super) fn edit_files(
@@ -83,14 +83,14 @@ pub(super) fn edit_files(
         })?;
 
         // Create socket
-        let (parent_socket, child_socket) = UnixStream::pair()?;
+        let (parent_pipe, child_pipe) = io::pipe()?;
 
         files.push(ParentFileInfo {
             path,
             file,
             lock,
             old_data: old_data.clone(),
-            new_data_rx: parent_socket,
+            new_data_rx: Some(parent_pipe),
             new_data: None,
         });
 
@@ -98,7 +98,7 @@ pub(super) fn edit_files(
             path,
             old_data,
             tempfile_path: None,
-            new_data_tx: child_socket,
+            new_data_tx: child_pipe,
         });
     }
 
@@ -113,7 +113,7 @@ pub(super) fn edit_files(
     for file in &mut files {
         // Read from socket
         file.new_data =
-            Some(read_stream(&mut file.new_data_rx).map_err(|e| {
+            Some(read_stream(file.new_data_rx.take().unwrap()).map_err(|e| {
                 io::Error::new(e.kind(), format!("Failed to read from socket: {e}"))
             })?);
     }
@@ -199,7 +199,6 @@ fn handle_child(editor: (PathBuf, Vec<OsString>), file: Vec<ChildFileInfo<'_>>) 
     }
 }
 
-// FIXME maybe use pipes once std::io::pipe has been stabilized long enough.
 fn handle_child_inner(
     editor: (PathBuf, Vec<OsString>),
     mut files: Vec<ChildFileInfo<'_>>,
@@ -280,7 +279,7 @@ fn handle_child_inner(
         process::exit(status.code().unwrap_or(1));
     }
 
-    for mut file in files {
+    for file in files {
         let tempfile_path = file.tempfile_path.as_ref().expect("filled in above");
 
         // Read from temp file
@@ -324,7 +323,7 @@ fn handle_child_inner(
                     user_info!("not overwriting {path}", path = file.path.display());
 
                     // Parent ignores write when new data matches old data
-                    write_stream(&mut file.new_data_tx, &file.old_data)
+                    write_stream(file.new_data_tx, &file.old_data)
                         .map_err(|e| xlat!("failed to write data to parent: {error}", error = e))?;
 
                     continue;
@@ -333,21 +332,21 @@ fn handle_child_inner(
         }
 
         // Write to socket
-        write_stream(&mut file.new_data_tx, &new_data)
+        write_stream(file.new_data_tx, &new_data)
             .map_err(|e| xlat!("failed to write data to parent: {error}", error = e))?;
     }
 
     process::exit(0);
 }
 
-fn write_stream(socket: &mut UnixStream, data: &[u8]) -> io::Result<()> {
-    socket.write_all(data)?;
-    socket.shutdown(Shutdown::Both)?;
+fn write_stream(mut pipe: PipeWriter, data: &[u8]) -> io::Result<()> {
+    pipe.write_all(data)?;
+    drop(pipe);
     Ok(())
 }
 
-fn read_stream(socket: &mut UnixStream) -> io::Result<Vec<u8>> {
+fn read_stream(mut pipe: PipeReader) -> io::Result<Vec<u8>> {
     let mut new_data = Vec::new();
-    socket.read_to_end(&mut new_data)?;
+    pipe.read_to_end(&mut new_data)?;
     Ok(new_data)
 }
