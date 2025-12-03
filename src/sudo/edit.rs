@@ -46,10 +46,10 @@ pub(super) fn edit_files(
             )
         })?;
         if !metadata.is_file() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("File {} is not a regular file", path.display()),
-            ));
+            return Err(io::Error::other(format!(
+                "File {} is not a regular file",
+                path.display()
+            )));
         }
 
         // Take file lock
