@@ -306,7 +306,7 @@ mod tests {
     use std::{
         ffi::OsString,
         io::{Read, Write},
-        os::unix::{net::UnixStream, prelude::OsStringExt},
+        os::unix::prelude::OsStringExt,
         path::PathBuf,
         process::exit,
     };
@@ -327,7 +327,7 @@ mod tests {
     #[test]
     fn tcsetpgrp_and_tcgetpgrp_are_consistent() {
         // Create a socket so the child can send us a byte if successful.
-        let (mut rx, mut tx) = UnixStream::pair().unwrap();
+        let (mut rx, mut tx) = io::pipe().unwrap();
 
         unsafe {
             fork_for_test(|| {

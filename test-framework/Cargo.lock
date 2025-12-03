@@ -205,7 +205,6 @@ name = "sudo-test"
 version = "0.1.0"
 dependencies = [
  "tar",
- "tempfile",
 ]
 
 [[package]]
