@@ -1,11 +1,9 @@
-use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::process::exit;
 use std::time::Duration;
 
 use super::cli::{SudoRunOptions, SudoValidateOptions};
 use super::diagnostic;
-use crate::common::context::LaunchType;
 use crate::common::resolve::{AuthUser, CurrentUser};
 use crate::common::{Context, Error};
 use crate::exec::ExitReason;
@@ -92,25 +90,20 @@ pub fn run(mut cmd_opts: SudoRunOptions) -> Result<(), Error> {
 
     // https://github.com/sudo-project/sudo/blob/8e0b9a9d475a46d35b78bc6718d44a56a278553e/plugins/sudoers/env.c#L907
     // FIXME for login make the PAM env override current env
-    let current_env = if context.launch == LaunchType::Login && !controls.trust_environment {
-        HashMap::new()
-    } else {
-        environment::system_environment()
-    };
+    let current_env = environment::system_environment();
     let trusted_vars = if controls.trust_environment {
         std::mem::take(&mut user_requested_env_vars)
     } else {
         vec![]
     };
-    let mut target_env = environment::get_target_environment(
+    let target_env = environment::get_target_environment(
         current_env,
         additional_env,
         user_requested_env_vars,
         &context,
         &controls,
+        trusted_vars,
     )?;
-
-    environment::dangerous_extend(&mut target_env, trusted_vars);
 
     let pid = context.process.pid;
 

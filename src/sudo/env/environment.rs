@@ -4,6 +4,7 @@ use std::{
     os::unix::prelude::OsStrExt,
 };
 
+use crate::common::context::LaunchType;
 use crate::common::{CommandAndArguments, Context, Error};
 use crate::sudoers::Restrictions;
 use crate::system::PATH_MAX;
@@ -210,19 +211,39 @@ pub fn get_target_environment(
     user_override: Vec<(String, String)>,
     context: &Context,
     settings: &Restrictions,
+    trusted_vars: Vec<(String, String)>,
 ) -> Result<Environment, Error> {
+    let override_invoking_env = context.launch == LaunchType::Login && !settings.trust_environment;
+
     // retrieve SUDO_PS1 value to set a PS1 value as additional environment
     let sudo_ps1 = current_env.get(OsStr::new("SUDO_PS1")).cloned();
 
     // variables preserved from the invoking user's environment by the
     // env_keep list take precedence over those in the PAM environment
-    let mut environment: HashMap<_, _> = additional_env.into_iter().collect();
-
-    environment.extend(
-        current_env
+    let mut environment: HashMap<_, _> = if override_invoking_env {
+        let mut environment: HashMap<_, _> = current_env
             .into_iter()
-            .filter(|(key, value)| should_keep(key, value, settings)),
-    );
+            .filter(|(key, value)| should_keep(key, value, settings))
+            .collect();
+
+        dangerous_extend(&mut environment, trusted_vars);
+
+        environment.extend(additional_env);
+
+        environment
+    } else {
+        let mut environment: HashMap<_, _> = additional_env.into_iter().collect();
+
+        environment.extend(
+            current_env
+                .into_iter()
+                .filter(|(key, value)| should_keep(key, value, settings)),
+        );
+
+        dangerous_extend(&mut environment, trusted_vars);
+
+        environment
+    };
 
     add_extra_env(context, settings, sudo_ps1, &mut environment);
 
