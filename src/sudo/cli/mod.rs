@@ -385,6 +385,8 @@ pub struct SudoRunOptions {
     pub askpass: bool,
     // -B
     pub bell: bool,
+    // -b
+    pub background: bool,
     // -E
     /* ignored, part of env_var_list */
     // -k
@@ -416,6 +418,7 @@ impl TryFrom<SudoOptions> for SudoRunOptions {
     fn try_from(mut opts: SudoOptions) -> Result<Self, Self::Error> {
         let askpass = mem::take(&mut opts.askpass);
         let bell = mem::take(&mut opts.bell);
+        let background = mem::take(&mut opts.background);
         let reset_timestamp = mem::take(&mut opts.reset_timestamp);
         let non_interactive = mem::take(&mut opts.non_interactive);
         let stdin = mem::take(&mut opts.stdin);
@@ -466,6 +469,7 @@ impl TryFrom<SudoOptions> for SudoRunOptions {
         Ok(Self {
             askpass,
             bell,
+            background,
             reset_timestamp,
             non_interactive,
             stdin,
@@ -487,6 +491,8 @@ struct SudoOptions {
     askpass: bool,
     // -B
     bell: bool,
+    // -b
+    background: bool,
     // -D
     chdir: Option<SudoPath>,
     // -g
@@ -698,6 +704,9 @@ impl SudoOptions {
                     "-B" | "--bell" => {
                         options.bell = true;
                     }
+                    "-b" | "--background" => {
+                        options.background = true;
+                    }
                     "-E" | "--preserve-env" => {
                         user_warn!(
                             "preserving the entire environment is not supported, '{flag}' is ignored",
@@ -878,6 +887,7 @@ fn reject_all(context: &str, opts: SudoOptions) -> Result<(), String> {
     check_options!(
         askpass,
         bell,
+        background,
         chdir,
         edit,
         group,
