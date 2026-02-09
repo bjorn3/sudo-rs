@@ -19,14 +19,17 @@ mkdir -p "$source_dir" "$source_dir/docs"
 
 # Necessary for building executables
 cp -r "$PROJECT_DIR/Cargo.toml" "$PROJECT_DIR/Cargo.lock" "$PROJECT_DIR/src" "$source_dir/"
+# Necessary for testing
+cp -r "$PROJECT_DIR/test-framework/" "$source_dir/" && rm -r "$source_dir/test-framework/target"
 # Documentation
 cp "$PROJECT_DIR/COPYRIGHT" "$PROJECT_DIR"/LICENSE-* "$PROJECT_DIR/README.md" "$PROJECT_DIR/CHANGELOG.md" "$PROJECT_DIR/SECURITY.md" "$source_dir/"
 cp -r "$PROJECT_DIR/docs/man" "$source_dir/docs/"
 # Necessary to regenerate bindings and man pages and rebuild a release
 cp -r "$PROJECT_DIR/Makefile" "$PROJECT_DIR/util" "$source_dir/"
 
-mkdir -p "$source_dir/.cargo"
+mkdir -p "$source_dir/.cargo" "$source_dir/test-framework/.cargo"
 cd "$source_dir" && cargo vendor > "$source_dir/.cargo/config.toml"
+cd "$source_dir/test-framework" && cargo vendor > "$source_dir/test-framework/.cargo/config.toml"
 
 # Build binaries
 docker build --pull --tag "$BUILDER_IMAGE_TAG" --file "$SCRIPT_DIR/Dockerfile-release" "$SCRIPT_DIR"
